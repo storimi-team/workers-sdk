@@ -394,7 +394,6 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 
 	@POST("/message")
 	message: RouteHandler = async (req) => {
-
 		validateMessageSize(req.headers);
 		const contentType = validateContentType(req.headers);
 		const delay =
@@ -410,10 +409,6 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 
 	@POST("/batch")
 	batch: RouteHandler = async (req) => {
-		// If we don't have a consumer, drop the message
-		const consumer = this.#maybeConsumer;
-		if (consumer === undefined) return new Response();
-
 		// NOTE: this endpoint is also used when moving messages to the dead-letter
 		// queue. In this case, size headers won't be added and this validation is
 		// a no-op. This allows us to enqueue a maximum size batch with additional
