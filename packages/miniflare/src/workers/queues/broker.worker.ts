@@ -308,7 +308,9 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 									currentMessages
 								);
 							});
-							this.#ensurePendingFlush();
+							if (consumer?.mode === "on-demand") {
+								this.#ensurePendingFlush();
+							}
 						};
 						const delay = retryMessages.get(message.id) ?? globalDelay;
 						this.timers.setTimeout(fn, delay * 1000);
@@ -337,7 +339,8 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 			const remainingStoredMessages =
 				(await this.state.storage.get<QueueMessage[]>("pending_messages")) ??
 				[];
-			if (remainingStoredMessages.length > 0) this.#ensurePendingFlush();
+			if (remainingStoredMessages.length > 0 && consumer?.mode === "on-demand")
+				this.#ensurePendingFlush();
 
 			if (toDeadLetterQueue.length > 0) {
 				// If we have messages to move to a dead letter queue, do so
