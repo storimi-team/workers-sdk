@@ -145,20 +145,25 @@ function serialise(msg: QueueMessage): QueueOutgoingMessage {
 }
 
 class QueueMessage {
-	#failedAttempts = 0;
+	readonly failedAttempts: number;
 
 	constructor(
 		readonly id: string,
 		readonly timestamp: Date,
-		readonly body: QueueBody
-	) {}
-
-	incrementFailedAttempts(): number {
-		return ++this.#failedAttempts;
+		readonly body: QueueBody,
+		failedAttempts = 0
+	) {
+		this.failedAttempts = failedAttempts;
 	}
 
-	get failedAttempts() {
-		return this.#failedAttempts;
+	incrementFailedAttempts(): number {
+		// Create a new instance with incremented attempts
+		return new QueueMessage(
+			this.id,
+			this.timestamp,
+			this.body,
+			this.failedAttempts + 1
+		).failedAttempts;
 	}
 }
 
@@ -247,22 +252,27 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 				await this.state.storage.get<QueueMessage[]>("pending_messages");
 			if (!storedMessages?.length) return;
 
-			// Ensure timestamps are Date objects and reconstruct QueueMessage instances
-			const messages = storedMessages.map((msg) => {
-				// Create a new QueueMessage instance with the stored data
-				return new QueueMessage(msg.id, new Date(msg.timestamp), msg.body);
-			});
-
 			const consumer = this.#maybeConsumer;
 			assert(consumer !== undefined);
+
+			// Reconstruct QueueMessage instances from stored data
+			const messages = storedMessages.map((msg) => {
+				return new QueueMessage(
+					msg.id,
+					new Date(msg.timestamp),
+					msg.body,
+					msg.failedAttempts ?? 0 // Simply pass the stored attempts count
+				);
+			});
 
 			const batchSize = consumer.maxBatchSize ?? DEFAULT_BATCH_SIZE;
 			const maxAttempts = (consumer.maxRetries ?? DEFAULT_RETRIES) + 1;
 			const maxAttemptsS = maxAttempts === 1 ? "" : "s";
 
-			// Extract a batch
+			// Extract and process batch
 			const batch = messages.slice(0, batchSize);
 			const remainingMessages = messages.slice(batchSize);
+			await this.state.storage.put("pending_messages", remainingMessages);
 
 			const startTime = Date.now();
 			let endTime: number;
@@ -275,8 +285,8 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 				await this.logWithLevel(LogLevel.ERROR, String(e));
 				response = exceptionQueueResponse;
 			}
-			// Get messages to retry. If dispatching the batch failed for any reason,
-			// retry all messages.
+
+			// Handle retries
 			const retryAll = response.retryBatch.retry || response.outcome !== "ok";
 			const retryMessages = new Map(
 				response.retryMessages?.map((r) => [r.msgId, r.delaySeconds])
@@ -286,6 +296,7 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 
 			let failedMessages = 0;
 			const toDeadLetterQueue: QueueMessage[] = [];
+
 			for (const message of batch) {
 				if (retryAll || retryMessages.has(message.id)) {
 					failedMessages++;
@@ -295,25 +306,32 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 							LogLevel.DEBUG,
 							`Retrying message "${message.id}" on queue "${this.name}"...`
 						);
+						const delay = retryMessages.get(message.id) ?? globalDelay;
 
-						const fn = async () => {
+						// Create new message with the incremented attempts count
+						const retryMessage = new QueueMessage(
+							message.id,
+							message.timestamp,
+							message.body,
+							failedAttempts
+						);
+
+						this.timers.setTimeout(async () => {
 							await this.state.blockConcurrencyWhile(async () => {
 								const currentMessages =
 									(await this.state.storage.get<QueueMessage[]>(
 										"pending_messages"
 									)) ?? [];
-								currentMessages.push(message);
+								currentMessages.push(retryMessage);
 								await this.state.storage.put(
 									"pending_messages",
 									currentMessages
 								);
 							});
 							if (consumer?.mode === "on-demand") {
-								this.#ensurePendingFlush();
+								await this.#ensurePendingFlush();
 							}
-						};
-						const delay = retryMessages.get(message.id) ?? globalDelay;
-						this.timers.setTimeout(fn, delay * 1000);
+						}, delay * 1000);
 					} else if (consumer.deadLetterQueue !== undefined) {
 						await this.logWithLevel(
 							LogLevel.WARN,
@@ -328,22 +346,15 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 					}
 				}
 			}
+
 			const acked = batch.length - failedMessages;
 			await this.logWithLevel(
 				LogLevel.INFO,
 				formatQueueResponse(this.name, acked, batch.length, endTime - startTime)
 			);
 
-			// Ensure we flush again if we still have messages.
-			this.#pendingFlush = undefined;
-			const remainingStoredMessages =
-				(await this.state.storage.get<QueueMessage[]>("pending_messages")) ??
-				[];
-			if (remainingStoredMessages.length > 0 && consumer?.mode === "on-demand")
-				this.#ensurePendingFlush();
-
+			// Handle dead letter queue
 			if (toDeadLetterQueue.length > 0) {
-				// If we have messages to move to a dead letter queue, do so
 				const name = consumer.deadLetterQueue;
 				assert(name !== undefined);
 				const ns = this.env[SharedBindings.DURABLE_OBJECT_NAMESPACE_OBJECT];
@@ -361,37 +372,43 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 				assert(res.ok);
 			}
 
-			// After successful processing, update stored messages with remaining
-			await this.state.storage.put("pending_messages", remainingMessages);
+			// Ensure we flush remaining messages
+			if (remainingMessages.length > 0 && consumer?.mode === "on-demand") {
+				await this.#ensurePendingFlush();
+			}
 		});
 	}
 
 	async #ensurePendingFlush() {
 		const consumer = this.#maybeConsumer;
-		assert(consumer !== undefined);
+		if (consumer === undefined) return;
+
+		const storedMessages =
+			await this.state.storage.get<QueueMessage[]>("pending_messages");
+		if (!storedMessages?.length) return;
 
 		const batchSize = consumer.maxBatchSize ?? DEFAULT_BATCH_SIZE;
 		const batchTimeout = consumer.maxBatchTimeout ?? DEFAULT_BATCH_TIMEOUT;
-		const storedMessages =
-			(await this.state.storage.get<QueueMessage[]>("pending_messages")) ?? [];
 		const batchHasSpace = storedMessages.length < batchSize;
 
-		if (this.#pendingFlush !== undefined) {
-			// If we have a pending immediate flush, or a delayed flush we haven't
-			// filled the batch for yet, just wait for it
-			if (this.#pendingFlush.immediate || batchHasSpace) return;
-			// Otherwise, the batch is full, so clear the existing timeout, and
-			// register an immediate flush
-			this.timers.clearTimeout(this.#pendingFlush.timeout);
+		// If batch is full, flush immediately
+		if (!batchHasSpace) {
+			if (this.#pendingFlush) {
+				this.timers.clearTimeout(this.#pendingFlush.timeout);
+			}
+			void this.#flush();
 			this.#pendingFlush = undefined;
+			return;
 		}
-		// Register a new flush timeout with the appropriate delay
-		const delay = batchHasSpace ? batchTimeout * 1000 : 0;
+
+		// Handle partial batches
+		if (this.#pendingFlush !== undefined) return;
+
 		const timeout = this.timers.setTimeout(() => {
 			this.#pendingFlush = undefined;
 			void this.#flush();
-		}, delay);
-		this.#pendingFlush = { immediate: delay === 0, timeout };
+		}, batchTimeout * 1000);
+		this.#pendingFlush = { immediate: false, timeout };
 	}
 
 	#enqueue(messages: QueueIncomingMessage[], globalDelay = 0) {
@@ -409,11 +426,8 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 						(await this.state.storage.get<QueueMessage[]>(
 							"pending_messages"
 						)) ?? [];
-					const messageArray = Array.isArray(currentMessages)
-						? currentMessages
-						: [];
-					messageArray.push(msg);
-					await this.state.storage.put("pending_messages", messageArray);
+					currentMessages.push(msg);
+					await this.state.storage.put("pending_messages", currentMessages);
 					if (consumer?.mode === "on-demand") {
 						await this.#ensurePendingFlush();
 					}
