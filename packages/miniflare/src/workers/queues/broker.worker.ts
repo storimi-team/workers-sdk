@@ -2,6 +2,7 @@ import assert from "node:assert";
 import { Buffer } from "node:buffer";
 import { bold, Colorize, green, grey, red, reset, yellow } from "kleur/colors";
 import {
+	GET,
 	HttpError,
 	LogLevel,
 	MiniflareDurableObject,
@@ -10,6 +11,7 @@ import {
 	POST,
 	RouteHandler,
 	SharedBindings,
+	TimerHandle,
 	viewToBuffer,
 } from "miniflare:shared";
 import { QueueBindings } from "./constants";
@@ -138,7 +140,7 @@ function serialise(msg: QueueMessage): QueueOutgoingMessage {
 		id: msg.id,
 		timestamp: msg.timestamp.getTime(),
 		contentType: msg.body.contentType,
-		body: body.toString("base64"),
+		body: Buffer.from(body).toString("base64"),
 	};
 }
 
@@ -176,6 +178,11 @@ function formatQueueResponse(
 	return reset(message);
 }
 
+interface PendingFlush {
+	immediate: boolean;
+	timeout: TimerHandle;
+}
+
 type QueueBrokerObjectEnv = MiniflareDurableObjectEnv & {
 	// Reference to own Durable Object namespace for sending to dead-letter queues
 	[SharedBindings.DURABLE_OBJECT_NAMESPACE_OBJECT]: DurableObjectNamespace;
@@ -190,6 +197,7 @@ type QueueBrokerObjectEnv = MiniflareDurableObjectEnv & {
 export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectEnv> {
 	readonly #producers: Record<string, QueueProducer | undefined>;
 	readonly #consumers: Record<string, QueueConsumer | undefined>;
+	#pendingFlush?: PendingFlush;
 
 	constructor(state: DurableObjectState, env: QueueBrokerObjectEnv) {
 		super(state, env);
@@ -201,20 +209,6 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 		const maybeConsumers = env[QueueBindings.MAYBE_JSON_QUEUE_CONSUMERS];
 		if (maybeConsumers === undefined) this.#consumers = {};
 		else this.#consumers = QueueConsumersSchema.parse(maybeConsumers);
-
-		// Set up polling for the consumer
-		if (this.#consumers) {
-			const batchTimeout = Number(
-				this.#consumers.maxBatchTimeout ?? DEFAULT_BATCH_TIMEOUT
-			);
-
-			// Set up recurring polls
-			setInterval(() => {
-				void this.#flush();
-			}, batchTimeout * 1000);
-		} else {
-			console.log("No consumer configured, skipping poll setup");
-		}
 	}
 
 	get #maybeProducer() {
@@ -236,8 +230,8 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 			`Expected ${bindingName} service binding`
 		);
 		const messages = batch.map(({ id, timestamp, body, failedAttempts }) => {
-			const attempts =
-				(typeof failedAttempts === "number" ? failedAttempts : 0) + 1;
+			const attempts = failedAttempts + 1;
+
 			if (body.contentType === "v8") {
 				return { id, timestamp, serializedBody: body.body, attempts };
 			} else {
@@ -247,21 +241,17 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 		return maybeService.queue(this.name, messages);
 	}
 
-	async #flush(immediate = false) {
+	async #flush() {
 		await this.state.blockConcurrencyWhile(async () => {
 			const storedMessages =
 				await this.state.storage.get<QueueMessage[]>("pending_messages");
-			if (!storedMessages) return;
+			if (!storedMessages?.length) return;
 
-			// Ensure timestamps are Date objects when retrieved from storage
-			const messages = Array.from(storedMessages).map((msg) => {
-				if (!(msg.timestamp instanceof Date)) {
-					return new QueueMessage(msg.id, new Date(msg.timestamp), msg.body);
-				}
-				return msg;
+			// Ensure timestamps are Date objects and reconstruct QueueMessage instances
+			const messages = storedMessages.map((msg) => {
+				// Create a new QueueMessage instance with the stored data
+				return new QueueMessage(msg.id, new Date(msg.timestamp), msg.body);
 			});
-
-			if (messages.length === 0) return;
 
 			const consumer = this.#maybeConsumer;
 			assert(consumer !== undefined);
@@ -318,6 +308,7 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 									currentMessages
 								);
 							});
+							this.#ensurePendingFlush();
 						};
 						const delay = retryMessages.get(message.id) ?? globalDelay;
 						this.timers.setTimeout(fn, delay * 1000);
@@ -340,6 +331,13 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 				LogLevel.INFO,
 				formatQueueResponse(this.name, acked, batch.length, endTime - startTime)
 			);
+
+			// Ensure we flush again if we still have messages.
+			this.#pendingFlush = undefined;
+			const remainingStoredMessages =
+				(await this.state.storage.get<QueueMessage[]>("pending_messages")) ??
+				[];
+			if (remainingStoredMessages.length > 0) this.#ensurePendingFlush();
 
 			if (toDeadLetterQueue.length > 0) {
 				// If we have messages to move to a dead letter queue, do so
@@ -365,6 +363,34 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 		});
 	}
 
+	async #ensurePendingFlush() {
+		const consumer = this.#maybeConsumer;
+		assert(consumer !== undefined);
+
+		const batchSize = consumer.maxBatchSize ?? DEFAULT_BATCH_SIZE;
+		const batchTimeout = consumer.maxBatchTimeout ?? DEFAULT_BATCH_TIMEOUT;
+		const storedMessages =
+			(await this.state.storage.get<QueueMessage[]>("pending_messages")) ?? [];
+		const batchHasSpace = storedMessages.length < batchSize;
+
+		if (this.#pendingFlush !== undefined) {
+			// If we have a pending immediate flush, or a delayed flush we haven't
+			// filled the batch for yet, just wait for it
+			if (this.#pendingFlush.immediate || batchHasSpace) return;
+			// Otherwise, the batch is full, so clear the existing timeout, and
+			// register an immediate flush
+			this.timers.clearTimeout(this.#pendingFlush.timeout);
+			this.#pendingFlush = undefined;
+		}
+		// Register a new flush timeout with the appropriate delay
+		const delay = batchHasSpace ? batchTimeout * 1000 : 0;
+		const timeout = this.timers.setTimeout(() => {
+			this.#pendingFlush = undefined;
+			void this.#flush();
+		}, delay);
+		this.#pendingFlush = { immediate: delay === 0, timeout };
+	}
+
 	#enqueue(messages: QueueIncomingMessage[], globalDelay = 0) {
 		for (const message of messages) {
 			const randomness = crypto.getRandomValues(new Uint8Array(16));
@@ -372,6 +398,7 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 			const timestamp = new Date(message.timestamp ?? this.timers.now());
 			const body = deserialise(message);
 			const msg = new QueueMessage(id, timestamp, body);
+			const consumer = this.#maybeConsumer;
 
 			const fn = async () => {
 				await this.state.blockConcurrencyWhile(async () => {
@@ -384,6 +411,9 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 						: [];
 					messageArray.push(msg);
 					await this.state.storage.put("pending_messages", messageArray);
+					if (consumer?.mode === "on-demand") {
+						await this.#ensurePendingFlush();
+					}
 				});
 			};
 
@@ -391,6 +421,37 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 			this.timers.setTimeout(fn, delay * 1000);
 		}
 	}
+
+	@GET("/start-polling")
+	startPolling: RouteHandler = async () => {
+		if (this.#consumers) {
+			for (const [queueName, consumer] of Object.entries(this.#consumers)) {
+				if (consumer?.mode === "polling") {
+					const batchTimeout = Number(
+						consumer.pollingInterval ??
+							consumer.maxBatchTimeout ??
+							DEFAULT_BATCH_TIMEOUT
+					);
+
+					// Set up recurring polls for this consumer
+					setInterval(() => {
+						void this.#flush();
+					}, batchTimeout * 1000);
+
+					await this.logWithLevel(
+						LogLevel.INFO,
+						`Initialized polling consumer for queue "${queueName}" with interval ${batchTimeout}s`
+					);
+				} else {
+					await this.logWithLevel(
+						LogLevel.INFO,
+						`Initialized on-demand consumer for queue "${queueName}"`
+					);
+				}
+			}
+		}
+		return new Response();
+	};
 
 	@POST("/message")
 	message: RouteHandler = async (req) => {

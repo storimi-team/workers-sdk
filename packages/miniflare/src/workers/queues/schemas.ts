@@ -31,6 +31,8 @@ export const QueueConsumerOptionsSchema = /* @__PURE__ */ z
 		maxRetries: z.number().min(0).max(100).optional(),
 		deadLetterQueue: z.ostring(),
 		retryDelay: QueueMessageDelaySchema,
+		mode: z.enum(["on-demand", "polling"]).default("on-demand"),
+		pollingInterval: z.number().optional(),
 	})
 	.transform((queue) => {
 		if (queue.maxRetires !== undefined) {
@@ -39,6 +41,8 @@ export const QueueConsumerOptionsSchema = /* @__PURE__ */ z
 
 		return queue as Omit<typeof queue, "maxRetires">;
 	});
+export type QueueConsumerOptions = z.infer<typeof QueueConsumerOptionsSchema>;
+
 export const QueueConsumerSchema = /* @__PURE__ */ z.intersection(
 	QueueConsumerOptionsSchema,
 	z.object({ workerName: z.string() })

@@ -121,9 +121,7 @@ export const QUEUES_PLUGIN: Plugin<
 						preventEviction: true,
 					},
 				],
-				durableObjectStorage: persistPath
-					? { localDisk: QUEUES_STORAGE_SERVICE_NAME }
-					: { inMemory: kVoid },
+				durableObjectStorage: { localDisk: QUEUES_STORAGE_SERVICE_NAME },
 				bindings: [
 					{
 						name: SharedBindings.MAYBE_SERVICE_LOOPBACK,
