@@ -6,7 +6,6 @@ import chalk from "chalk";
 import md5File from "md5-file";
 import { Miniflare } from "miniflare";
 import { fetch } from "undici";
-import { printWranglerBanner } from "..";
 import { fetchResult } from "../cfetch";
 import { configFileName, readConfig } from "../config";
 import { getLocalPersistencePath } from "../dev/get-local-persistence-path";
@@ -16,10 +15,11 @@ import { logger } from "../logger";
 import { APIError, readFileSync } from "../parse";
 import { readableRelative } from "../paths";
 import { requireAuth } from "../user";
+import { printWranglerBanner } from "../wrangler-banner";
 import * as options from "./options";
 import splitSqlQuery from "./splitter";
 import { getDatabaseByNameOrBinding, getDatabaseInfoFromConfig } from "./utils";
-import type { Config, ConfigFields, DevConfig, Environment } from "../config";
+import type { Config } from "../config";
 import type {
 	CommonYargsArgv,
 	StrictYargsOptionsToInterface,
@@ -116,7 +116,9 @@ export const Handler = async (args: HandlerOptions): Promise<void> => {
 	if (file && command) {
 		throw createFatalError(
 			`Error: can't provide both --command and --file.`,
-			json
+			json,
+			undefined,
+			{ telemetryMessage: true }
 		);
 	}
 
@@ -197,7 +199,7 @@ export async function executeSql({
 }: {
 	local: boolean | undefined;
 	remote: boolean | undefined;
-	config: ConfigFields<DevConfig> & Environment;
+	config: Config;
 	name: string;
 	shouldPrompt: boolean | undefined;
 	persistTo: string | undefined;
@@ -276,7 +278,7 @@ async function executeLocally({
 	}
 
 	const id = localDB.previewDatabaseUuid ?? localDB.uuid;
-	const persistencePath = getLocalPersistencePath(persistTo, config.configPath);
+	const persistencePath = getLocalPersistencePath(persistTo, config);
 	const d1Persist = path.join(persistencePath, "v3", "d1");
 
 	logger.log(

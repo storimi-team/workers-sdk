@@ -1,8 +1,8 @@
-import { printWranglerBanner } from "..";
 import { fetchResult } from "../cfetch";
 import { withConfig } from "../config";
 import { logger } from "../logger";
 import { requireAuth } from "../user";
+import { printWranglerBanner } from "../wrangler-banner";
 import type {
 	CommonYargsArgv,
 	StrictYargsOptionsToInterface,
@@ -40,9 +40,9 @@ export const Handler = withConfig<HandlerOptions>(
 
 export const listDatabases = async (
 	accountId: string,
-	limitCalls: boolean = false
+	limitCalls: boolean = false,
+	pageSize: number = 10
 ): Promise<Array<Database>> => {
-	const pageSize = 10;
 	let page = 1;
 	const results = [];
 	while (results.length % pageSize === 0) {
@@ -56,7 +56,7 @@ export const listDatabases = async (
 		);
 		page++;
 		results.push(...json);
-		if (limitCalls) {
+		if (limitCalls && page > 3) {
 			break;
 		}
 		if (json.length < pageSize) {

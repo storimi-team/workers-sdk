@@ -1,14 +1,6 @@
 import assert from "node:assert";
 import path from "node:path";
 import { watch } from "chokidar";
-import {
-	DEFAULT_INSPECTOR_PORT,
-	DEFAULT_LOCAL_PORT,
-	getDevCompatibilityDate,
-	getRules,
-	getScriptName,
-	isLegacyEnv,
-} from "../..";
 import { getAssetsOptions, validateAssetsArgsAndConfig } from "../../assets";
 import { readConfig } from "../../config";
 import { getEntry } from "../../deployment-bundle/entry";
@@ -23,6 +15,14 @@ import { getLocalPersistencePath } from "../../dev/get-local-persistence-path";
 import { UserError } from "../../errors";
 import { logger } from "../../logger";
 import { requireApiToken, requireAuth } from "../../user";
+import {
+	DEFAULT_INSPECTOR_PORT,
+	DEFAULT_LOCAL_PORT,
+} from "../../utils/constants";
+import { getDevCompatibilityDate } from "../../utils/getDevCompatibilityDate";
+import { getRules } from "../../utils/getRules";
+import { getScriptName } from "../../utils/getScriptName";
+import { isLegacyEnv } from "../../utils/isLegacyEnv";
 import { memoizeGetPort } from "../../utils/memoizeGetPort";
 import { printBindings } from "../../utils/print-bindings";
 import { getZoneIdForPreview } from "../../zones";
@@ -67,7 +67,7 @@ async function resolveDevConfig(
 
 	const localPersistencePath = getLocalPersistencePath(
 		input.dev?.persist,
-		config.configPath
+		config
 	);
 
 	const { host, routes } = await getHostAndRoutes(
@@ -227,6 +227,14 @@ async function resolveConfig(
 	config: Config,
 	input: StartDevWorkerInput
 ): Promise<StartDevWorkerOptions> {
+	if (
+		config.pages_build_output_dir &&
+		input.dev?.multiworkerPrimary === false
+	) {
+		throw new UserError(
+			`You cannot use a Pages project as a service binding target.\nIf you are trying to develop Pages and Workers together, please use \`wrangler pages dev\`. Note the first config file specified must be for the Pages project`
+		);
+	}
 	const legacySite = unwrapHook(input.legacy?.site, config);
 
 	const legacyAssets = unwrapHook(input.legacy?.legacyAssets, config);
@@ -312,6 +320,15 @@ async function resolveConfig(
 	if (resolved.legacy.legacyAssets && resolved.legacy.site) {
 		throw new UserError(
 			"Cannot use legacy assets and Workers Sites in the same Worker."
+		);
+	}
+
+	if (
+		extractBindingsOfType("browser", resolved.bindings).length &&
+		!resolved.dev.remote
+	) {
+		throw new UserError(
+			"Browser Rendering is not supported locally. Please use `wrangler dev --remote` instead."
 		);
 	}
 
@@ -409,25 +426,29 @@ export class ConfigController extends Controller<ConfigControllerEventMap> {
 		const signal = this.#abortController.signal;
 		this.latestInput = input;
 		try {
-			const fileConfig = readConfig({
-				config: input.config,
-				env: input.env,
-				"dispatch-namespace": undefined,
-				"legacy-env": !input.legacy?.enableServiceEnvironments,
-				remote: input.dev?.remote,
-				upstreamProtocol:
-					input.dev?.origin?.secure === undefined
-						? undefined
-						: input.dev?.origin?.secure
-							? "https"
-							: "http",
-				localProtocol:
-					input.dev?.server?.secure === undefined
-						? undefined
-						: input.dev?.server?.secure
-							? "https"
-							: "http",
-			});
+			const fileConfig = readConfig(
+				{
+					script: input.entrypoint,
+					config: input.config,
+					env: input.env,
+					"dispatch-namespace": undefined,
+					"legacy-env": !input.legacy?.enableServiceEnvironments,
+					remote: input.dev?.remote,
+					upstreamProtocol:
+						input.dev?.origin?.secure === undefined
+							? undefined
+							: input.dev?.origin?.secure
+								? "https"
+								: "http",
+					localProtocol:
+						input.dev?.server?.secure === undefined
+							? undefined
+							: input.dev?.server?.secure
+								? "https"
+								: "http",
+				},
+				{ useRedirectIfAvailable: true }
+			);
 
 			if (typeof vitest === "undefined") {
 				void this.#ensureWatchingConfig(fileConfig.configPath);

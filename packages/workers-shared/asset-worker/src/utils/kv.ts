@@ -1,3 +1,5 @@
+import type { Toucan } from "toucan-js";
+
 export type AssetMetadata = {
 	contentType: string;
 };
@@ -5,21 +7,47 @@ export type AssetMetadata = {
 export async function getAssetWithMetadataFromKV(
 	assetsKVNamespace: KVNamespace,
 	assetKey: string,
+	sentry?: Toucan,
 	retries = 1
 ) {
 	let attempts = 0;
 
 	while (attempts <= retries) {
 		try {
-			return await assetsKVNamespace.getWithMetadata<AssetMetadata>(assetKey, {
-				type: "stream",
-				cacheTtl: 31536000, // 1 year
-			});
+			const asset = await assetsKVNamespace.getWithMetadata<AssetMetadata>(
+				assetKey,
+				{
+					type: "stream",
+					cacheTtl: 31536000, // 1 year
+				}
+			);
+
+			if (asset.value === null) {
+				// Don't cache a 404 for a year by re-requesting with a minimum cacheTtl
+				const retriedAsset =
+					await assetsKVNamespace.getWithMetadata<AssetMetadata>(assetKey, {
+						type: "stream",
+						cacheTtl: 60, // Minimum value allowed
+					});
+
+				if (retriedAsset.value !== null && sentry) {
+					sentry.captureException(
+						new Error(
+							`Initial request for asset ${assetKey} failed, but subsequent request succeeded.`
+						)
+					);
+				}
+
+				return retriedAsset;
+			}
+			return asset;
 		} catch (err) {
 			if (attempts >= retries) {
-				throw new Error(
-					`Requested asset ${assetKey} could not be fetched from KV namespace.`
-				);
+				let message = `KV GET ${assetKey} failed.`;
+				if (err instanceof Error) {
+					message = `KV GET ${assetKey} failed: ${err.message}`;
+				}
+				throw new Error(message);
 			}
 
 			// Exponential backoff, 1 second first time, then 2 second, then 4 second etc.

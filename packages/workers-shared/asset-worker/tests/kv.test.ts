@@ -45,9 +45,7 @@ describe("[Asset Worker] Fetching assets from KV", () => {
 
 			await expect(() =>
 				getAssetWithMetadataFromKV(mockKVNamespace, "abcd")
-			).rejects.toThrowError(
-				"Requested asset abcd could not be fetched from KV namespace."
-			);
+			).rejects.toThrowError("KV GET abcd failed.");
 		});
 
 		it("should retry once by default if something went wrong while fetching the asset", async () => {
@@ -55,9 +53,7 @@ describe("[Asset Worker] Fetching assets from KV", () => {
 
 			await expect(() =>
 				getAssetWithMetadataFromKV(mockKVNamespace, "abcd")
-			).rejects.toThrowError(
-				"Requested asset abcd could not be fetched from KV namespace."
-			);
+			).rejects.toThrowError("KV GET abcd failed.");
 			expect(spy).toHaveBeenCalledTimes(2);
 		});
 
@@ -65,11 +61,47 @@ describe("[Asset Worker] Fetching assets from KV", () => {
 			spy.mockReturnValue(Promise.reject("Oeps! Something went wrong"));
 
 			await expect(() =>
-				getAssetWithMetadataFromKV(mockKVNamespace, "abcd", 2)
-			).rejects.toThrowError(
-				"Requested asset abcd could not be fetched from KV namespace."
-			);
+				getAssetWithMetadataFromKV(mockKVNamespace, "abcd", undefined, 2)
+			).rejects.toThrowError("KV GET abcd failed.");
 			expect(spy).toHaveBeenCalledTimes(3);
+		});
+
+		it("should inject message with error", async () => {
+			spy.mockReturnValue(
+				Promise.reject(new Error("Oeps! Something went wrong"))
+			);
+
+			await expect(() =>
+				getAssetWithMetadataFromKV(mockKVNamespace, "abcd")
+			).rejects.toThrowError("KV GET abcd failed: Oeps! Something went wrong");
+			expect(spy).toHaveBeenCalledTimes(2);
+		});
+
+		it("should retry on 404 and cache with 30s ttl", async () => {
+			let attempts = 0;
+			spy.mockImplementation(() => {
+				if (attempts++ === 0) {
+					return Promise.resolve({
+						value: null,
+					}) as unknown as Promise<
+						KVNamespaceGetWithMetadataResult<ReadableStream, AssetMetadata>
+					>;
+				} else {
+					return Promise.resolve({
+						value: "<html>Hello world</html>",
+						metadata: {
+							contentType: "text/html",
+						},
+					}) as unknown as Promise<
+						KVNamespaceGetWithMetadataResult<ReadableStream, AssetMetadata>
+					>;
+				}
+			});
+
+			const asset = await getAssetWithMetadataFromKV(mockKVNamespace, "abcd");
+			expect(asset?.value).toBeTruthy();
+			// Once for the initial call, once for the 404
+			expect(spy).toHaveBeenCalledTimes(2);
 		});
 	});
 });

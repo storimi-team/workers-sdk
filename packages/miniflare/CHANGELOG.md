@@ -1,5 +1,66 @@
 # miniflare
 
+## 3.20250129.0
+
+### Patch Changes
+
+- [#7971](https://github.com/cloudflare/workers-sdk/pull/7971) [`ab49886`](https://github.com/cloudflare/workers-sdk/commit/ab498862b96551774f601403d3e93d2105a18a91) Thanks [@dependabot](https://github.com/apps/dependabot)! - chore: update dependencies of "miniflare" package
+
+  The following dependency versions have been updated:
+
+  | Dependency                | From          | To            |
+  | ------------------------- | ------------- | ------------- |
+  | workerd                   | 1.20250124.0  | 1.20250129.0  |
+  | @cloudflare/workers-types | ^4.20250121.0 | ^4.20250129.0 |
+
+## 3.20250124.1
+
+### Patch Changes
+
+- [#7788](https://github.com/cloudflare/workers-sdk/pull/7788) [`cf4f47a`](https://github.com/cloudflare/workers-sdk/commit/cf4f47a8af2dc476f8a0e61f0d22f080f191de1f) Thanks [@penalosa](https://github.com/penalosa)! - Switch to `capnp-es` over `capnp-ts`
+
+## 3.20250124.0
+
+### Patch Changes
+
+- [#7890](https://github.com/cloudflare/workers-sdk/pull/7890) [`40f89a9`](https://github.com/cloudflare/workers-sdk/commit/40f89a90d93f57294e49a6b5ed8ba8cc38e0da77) Thanks [@dependabot](https://github.com/apps/dependabot)! - chore: update dependencies of "miniflare" package
+
+  The following dependency versions have been updated:
+
+  | Dependency                | From          | To            |
+  | ------------------------- | ------------- | ------------- |
+  | workerd                   | 1.20241230.0  | 1.20250124.0  |
+  | @cloudflare/workers-types | ^4.20241230.0 | ^4.20250121.0 |
+
+## 3.20241230.2
+
+### Patch Changes
+
+- [#7738](https://github.com/cloudflare/workers-sdk/pull/7738) [`8e9aa40`](https://github.com/cloudflare/workers-sdk/commit/8e9aa40a6c914a3a9804dccdca7202aecda45ba7) Thanks [@penalosa](https://github.com/penalosa)! - Use TEXT bindings for plain text values in Miniflare. This is an internal detail that should have no user facing impact.
+
+## 3.20241230.1
+
+### Minor Changes
+
+- [#7702](https://github.com/cloudflare/workers-sdk/pull/7702) [`78bdec5`](https://github.com/cloudflare/workers-sdk/commit/78bdec59ce880365b0318eb94d4176b53e950f66) Thanks [@penalosa](https://github.com/penalosa)! - Support the `CF-Connecting-IP` header, which will be available in your Worker to determine the IP address of the client that initiated a request.
+
+### Patch Changes
+
+- [#7701](https://github.com/cloudflare/workers-sdk/pull/7701) [`2c76887`](https://github.com/cloudflare/workers-sdk/commit/2c7688737346992d046d2f88eba5c9847ede1365) Thanks [@lambrospetrou](https://github.com/lambrospetrou)! - Fix D1 exports to properly pad HEX strings for binary values.
+
+## 3.20241230.0
+
+### Patch Changes
+
+- [#7652](https://github.com/cloudflare/workers-sdk/pull/7652) [`b4e0af1`](https://github.com/cloudflare/workers-sdk/commit/b4e0af163548ee8cc0aefc9165f67a0f83ea94d4) Thanks [@dependabot](https://github.com/apps/dependabot)! - chore: update dependencies of "miniflare" package
+
+  The following dependency versions have been updated:
+
+  | Dependency                | From          | To            |
+  | ------------------------- | ------------- | ------------- |
+  | workerd                   | 1.20241218.0  | 1.20241230.0  |
+  | @cloudflare/workers-types | ^4.20241218.0 | ^4.20241230.0 |
+
 ## 3.20241218.0
 
 ### Patch Changes

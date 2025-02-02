@@ -48,7 +48,7 @@ describe("wrangler", () => {
 
 			GLOBAL FLAGS
 			  -c, --config   Path to Wrangler configuration file  [string]
-			  -e, --env      Environment to use for operations and .env files  [string]
+			  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 			  -h, --help     Show help  [boolean]
 			  -v, --version  Show version number  [boolean]"
 		`);
@@ -69,7 +69,7 @@ describe("wrangler", () => {
 
 			GLOBAL FLAGS
 			  -c, --config   Path to Wrangler configuration file  [string]
-			  -e, --env      Environment to use for operations and .env files  [string]
+			  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 			  -h, --help     Show help  [boolean]
 			  -v, --version  Show version number  [boolean]"
 		`);
@@ -97,7 +97,7 @@ describe("wrangler", () => {
 
 			GLOBAL FLAGS
 			  -c, --config   Path to Wrangler configuration file  [string]
-			  -e, --env      Environment to use for operations and .env files  [string]
+			  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 			  -h, --help     Show help  [boolean]
 			  -v, --version  Show version number  [boolean]"
 		`);
@@ -141,7 +141,7 @@ describe("wrangler", () => {
 
 					GLOBAL FLAGS
 					  -c, --config   Path to Wrangler configuration file  [string]
-					  -e, --env      Environment to use for operations and .env files  [string]
+					  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 					  -h, --help     Show help  [boolean]
 					  -v, --version  Show version number  [boolean]
 
@@ -172,7 +172,7 @@ describe("wrangler", () => {
 
 					GLOBAL FLAGS
 					  -c, --config   Path to Wrangler configuration file  [string]
-					  -e, --env      Environment to use for operations and .env files  [string]
+					  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 					  -h, --help     Show help  [boolean]
 					  -v, --version  Show version number  [boolean]
 
@@ -623,7 +623,7 @@ describe("wrangler", () => {
 
 					GLOBAL FLAGS
 					  -c, --config   Path to Wrangler configuration file  [string]
-					  -e, --env      Environment to use for operations and .env files  [string]
+					  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 					  -h, --help     Show help  [boolean]
 					  -v, --version  Show version number  [boolean]
 
@@ -664,7 +664,7 @@ describe("wrangler", () => {
 
 					GLOBAL FLAGS
 					  -c, --config   Path to Wrangler configuration file  [string]
-					  -e, --env      Environment to use for operations and .env files  [string]
+					  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 					  -h, --help     Show help  [boolean]
 					  -v, --version  Show version number  [boolean]
 
@@ -705,7 +705,7 @@ describe("wrangler", () => {
 
 					GLOBAL FLAGS
 					  -c, --config   Path to Wrangler configuration file  [string]
-					  -e, --env      Environment to use for operations and .env files  [string]
+					  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 					  -h, --help     Show help  [boolean]
 					  -v, --version  Show version number  [boolean]
 
@@ -746,7 +746,7 @@ describe("wrangler", () => {
 
 					GLOBAL FLAGS
 					  -c, --config   Path to Wrangler configuration file  [string]
-					  -e, --env      Environment to use for operations and .env files  [string]
+					  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 					  -h, --help     Show help  [boolean]
 					  -v, --version  Show version number  [boolean]
 
@@ -787,7 +787,7 @@ describe("wrangler", () => {
 
 					GLOBAL FLAGS
 					  -c, --config   Path to Wrangler configuration file  [string]
-					  -e, --env      Environment to use for operations and .env files  [string]
+					  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 					  -h, --help     Show help  [boolean]
 					  -v, --version  Show version number  [boolean]
 
@@ -1156,7 +1156,7 @@ describe("wrangler", () => {
 
 					GLOBAL FLAGS
 					  -c, --config   Path to Wrangler configuration file  [string]
-					  -e, --env      Environment to use for operations and .env files  [string]
+					  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 					  -h, --help     Show help  [boolean]
 					  -v, --version  Show version number  [boolean]
 
@@ -1192,7 +1192,7 @@ describe("wrangler", () => {
 
 					GLOBAL FLAGS
 					  -c, --config   Path to Wrangler configuration file  [string]
-					  -e, --env      Environment to use for operations and .env files  [string]
+					  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 					  -h, --help     Show help  [boolean]
 					  -v, --version  Show version number  [boolean]
 
@@ -1229,7 +1229,7 @@ describe("wrangler", () => {
 
 					GLOBAL FLAGS
 					  -c, --config   Path to Wrangler configuration file  [string]
-					  -e, --env      Environment to use for operations and .env files  [string]
+					  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 					  -h, --help     Show help  [boolean]
 					  -v, --version  Show version number  [boolean]
 
@@ -1275,7 +1275,7 @@ describe("wrangler", () => {
 					await expect(runWrangler("kv key get key --namespace-id=xxxx"))
 						.rejects.toThrowErrorMatchingInlineSnapshot(`
 						[Error: More than one account available but unable to select one in non-interactive mode.
-						Please set the appropriate \`account_id\` in your Wrangler configuration file.
+						Please set the appropriate \`account_id\` in your Wrangler configuration file or assign it to the \`CLOUDFLARE_ACCOUNT_ID\` environment variable.
 						Available accounts are (\`<name>\`: \`<account_id>\`):
 						  \`one\`: \`1\`
 						  \`two\`: \`2\`]
@@ -1291,7 +1291,7 @@ describe("wrangler", () => {
 					await expect(runWrangler("kv key get key --namespace-id=xxxx"))
 						.rejects.toThrowErrorMatchingInlineSnapshot(`
 						[Error: More than one account available but unable to select one in non-interactive mode.
-						Please set the appropriate \`account_id\` in your Wrangler configuration file.
+						Please set the appropriate \`account_id\` in your Wrangler configuration file or assign it to the \`CLOUDFLARE_ACCOUNT_ID\` environment variable.
 						Available accounts are (\`<name>\`: \`<account_id>\`):
 						  \`one\`: \`1\`
 						  \`two\`: \`2\`]
@@ -1332,7 +1332,7 @@ describe("wrangler", () => {
 					await expect(runWrangler("kv key get key --namespace-id=xxxx"))
 						.rejects.toThrowErrorMatchingInlineSnapshot(`
 						[Error: More than one account available but unable to select one in non-interactive mode.
-						Please set the appropriate \`account_id\` in your Wrangler configuration file.
+						Please set the appropriate \`account_id\` in your Wrangler configuration file or assign it to the \`CLOUDFLARE_ACCOUNT_ID\` environment variable.
 						Available accounts are (\`<name>\`: \`<account_id>\`):
 						  \`one\`: \`1\`
 						  \`two\`: \`2\`]
@@ -1800,7 +1800,7 @@ describe("wrangler", () => {
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]"
 			`);
@@ -1820,7 +1820,7 @@ describe("wrangler", () => {
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]"
 			`);
@@ -1838,7 +1838,7 @@ describe("wrangler", () => {
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]"
 			`);

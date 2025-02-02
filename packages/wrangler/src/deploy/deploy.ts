@@ -28,6 +28,7 @@ import { loadSourceMaps } from "../deployment-bundle/source-maps";
 import { confirm } from "../dialogs";
 import { getMigrationsToUpload } from "../durable";
 import { UserError } from "../errors";
+import { getFlag } from "../experimental-flags";
 import { logger } from "../logger";
 import { getMetricsUsageHeaders } from "../metrics";
 import { isNavigatorDefined } from "../navigator-user-agent";
@@ -48,7 +49,7 @@ import {
 } from "../sourcemap";
 import triggersDeploy from "../triggers/deploy";
 import { printBindings } from "../utils/print-bindings";
-import { retryOnError } from "../utils/retry";
+import { retryOnAPIFailure } from "../utils/retry";
 import {
 	createDeployment,
 	patchNonVersionedScriptSettings,
@@ -107,7 +108,6 @@ type Props = {
 	oldAssetTtl: number | undefined;
 	projectRoot: string | undefined;
 	dispatchNamespace: string | undefined;
-	experimentalVersions: boolean | undefined;
 	experimentalAutoCreate: boolean;
 };
 
@@ -193,10 +193,10 @@ export const validateRoutes = (routes: Route[], assets?: AssetsOptions) => {
 					`Paths are not allowed in Custom Domains`
 				);
 			}
-			// If we have Assets but we're not always hitting the Worker then validate
 		} else if (
+			// If we have Assets but we're not always hitting the Worker then validate
 			assets?.directory !== undefined &&
-			assets.assetConfig.serve_directly !== true
+			assets.assetConfig.run_worker_first !== true
 		) {
 			const pattern = typeof route === "string" ? route : route.pattern;
 			const components = pattern.split("/");
@@ -781,7 +781,6 @@ See https://developers.cloudflare.com/workers/platform/compatibility-dates for m
 		}
 
 		// We can use the new versions/deployments APIs if we:
-		// * have --x-versions enabled (default, but can be disabled with --no-x-versions)
 		// * are uploading a worker that already exists
 		// * aren't a dispatch namespace deploy
 		// * aren't a service env deploy
@@ -789,7 +788,6 @@ See https://developers.cloudflare.com/workers/platform/compatibility-dates for m
 		// * we don't have DO migrations
 		// * we aren't an fpw
 		const canUseNewVersionsDeploymentsApi =
-			props.experimentalVersions &&
 			workerExists &&
 			props.dispatchNamespace === undefined &&
 			prod &&
@@ -802,13 +800,15 @@ See https://developers.cloudflare.com/workers/platform/compatibility-dates for m
 		} else {
 			assert(accountId, "Missing accountId");
 
-			await provisionBindings(
-				bindings,
-				accountId,
-				scriptName,
-				props.experimentalAutoCreate,
-				props.config
-			);
+			if (getFlag("RESOURCES_PROVISION")) {
+				await provisionBindings(
+					bindings,
+					accountId,
+					scriptName,
+					props.experimentalAutoCreate,
+					props.config
+				);
+			}
 			await ensureQueuesExistByConfig(config);
 			let bindingsPrinted = false;
 
@@ -826,7 +826,7 @@ See https://developers.cloudflare.com/workers/platform/compatibility-dates for m
 				// If we're using the new APIs, first upload the version
 				if (canUseNewVersionsDeploymentsApi) {
 					// Upload new version
-					const versionResult = await retryOnError(async () =>
+					const versionResult = await retryOnAPIFailure(async () =>
 						fetchResult<ApiVersion>(
 							`/accounts/${accountId}/workers/scripts/${scriptName}/versions`,
 							{
@@ -861,7 +861,7 @@ See https://developers.cloudflare.com/workers/platform/compatibility-dates for m
 						startup_time_ms: versionResult.startup_time_ms,
 					};
 				} else {
-					result = await retryOnError(async () =>
+					result = await retryOnAPIFailure(async () =>
 						fetchResult<{
 							id: string | null;
 							etag: string | null;

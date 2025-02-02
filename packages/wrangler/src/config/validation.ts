@@ -61,6 +61,7 @@ export type NormalizeAndValidateConfigArgs = {
 	remote?: boolean;
 	localProtocol?: string;
 	upstreamProtocol?: string;
+	script?: string;
 };
 
 const ENGLISH = new Intl.ListFormat("en-US");
@@ -80,6 +81,7 @@ export function isPagesConfig(rawConfig: RawConfig): boolean {
 export function normalizeAndValidateConfig(
 	rawConfig: RawConfig,
 	configPath: string | undefined,
+	userConfigPath: string | undefined,
 	args: NormalizeAndValidateConfigArgs
 ): {
 	config: Config;
@@ -266,6 +268,8 @@ export function normalizeAndValidateConfig(
 	// Process the top-level default environment configuration.
 	const config: Config = {
 		configPath,
+		userConfigPath,
+		topLevelName: rawConfig.name,
 		pages_build_output_dir: normalizeAndValidatePagesBuildOutputDir(
 			configPath,
 			rawConfig.pages_build_output_dir
@@ -328,7 +332,7 @@ function applyPythonConfig(
 	config: Config,
 	args: NormalizeAndValidateConfigArgs
 ) {
-	const mainModule = "script" in args ? args.script : config.main;
+	const mainModule = args.script ?? config.main;
 	if (typeof mainModule === "string" && mainModule.endsWith(".py")) {
 		// Workers with a python entrypoint should have bundling turned off, since all of Wrangler's bundling is JS/TS specific
 		config.no_bundle = true;
@@ -577,6 +581,31 @@ function normalizeAndValidateDev(
 	);
 	validateOptionalProperty(diagnostics, "dev", "host", host, "string");
 	return { ip, port, inspector_port, local_protocol, upstream_protocol, host };
+}
+
+function normalizeAndValidateAssets(
+	diagnostics: Diagnostics,
+	topLevelEnv: Environment | undefined,
+	rawEnv: RawEnvironment
+): Config["assets"] {
+	if (rawEnv?.assets !== undefined) {
+		deprecated(
+			diagnostics,
+			rawEnv,
+			"assets.experimental_serve_directly",
+			`The "experimental_serve_directly" field is not longer supported. Please use run_worker_first.\nRead more: https://developers.cloudflare.com/workers/static-assets/binding/#run_worker_first`,
+			false // Leave in for the moment, to be removed in a future release
+		);
+	}
+
+	return inheritable(
+		diagnostics,
+		topLevelEnv,
+		rawEnv,
+		"assets",
+		validateAssetsConfig,
+		undefined
+	);
 }
 
 /**
@@ -1279,14 +1308,7 @@ function normalizeAndValidateEnvironment(
 			isObjectWith("crons"),
 			{ crons: [] }
 		),
-		assets: inheritable(
-			diagnostics,
-			topLevelEnv,
-			rawEnv,
-			"assets",
-			validateAssetsConfig,
-			undefined
-		),
+		assets: normalizeAndValidateAssets(diagnostics, topLevelEnv, rawEnv),
 		usage_model: inheritable(
 			diagnostics,
 			topLevelEnv,
@@ -2199,6 +2221,15 @@ const validateAssetsConfig: ValidatorFn = (diagnostics, field, value) => {
 		validateOptionalProperty(
 			diagnostics,
 			field,
+			"run_worker_first",
+			(value as Assets).run_worker_first,
+			"boolean"
+		) && isValid;
+
+	isValid =
+		validateOptionalProperty(
+			diagnostics,
+			field,
 			"experimental_serve_directly",
 			(value as Assets).experimental_serve_directly,
 			"boolean"
@@ -2210,6 +2241,7 @@ const validateAssetsConfig: ValidatorFn = (diagnostics, field, value) => {
 			"binding",
 			"html_handling",
 			"not_found_handling",
+			"run_worker_first",
 			"experimental_serve_directly",
 		]) && isValid;
 
@@ -3409,6 +3441,7 @@ const validateMigrations: ValidatorFn = (diagnostics, field, value) => {
 			new_sqlite_classes,
 			renamed_classes,
 			deleted_classes,
+			transferred_classes,
 			...rest
 		} = rawMigrations[i];
 
@@ -3469,6 +3502,33 @@ const validateMigrations: ValidatorFn = (diagnostics, field, value) => {
 				valid = false;
 			}
 		}
+
+		if (transferred_classes !== undefined) {
+			if (!Array.isArray(transferred_classes)) {
+				diagnostics.errors.push(
+					`Expected "migrations[${i}].transferred_classes" to be an array of "{from: string, from_script: string, to: string}" objects but got ${JSON.stringify(
+						transferred_classes
+					)}.`
+				);
+				valid = false;
+			} else if (
+				transferred_classes.some(
+					(c) =>
+						typeof c !== "object" ||
+						!isRequiredProperty(c, "from", "string") ||
+						!isRequiredProperty(c, "from_script", "string") ||
+						!isRequiredProperty(c, "to", "string")
+				)
+			) {
+				diagnostics.errors.push(
+					`Expected "migrations[${i}].transferred_classes" to be an array of "{from: string, from_script: string, to: string}" objects but got ${JSON.stringify(
+						transferred_classes
+					)}.`
+				);
+				valid = false;
+			}
+		}
+
 		valid =
 			validateOptionalTypedArray(
 				diagnostics,

@@ -1,7 +1,13 @@
 import { existsSync } from "fs";
 import { cp } from "fs/promises";
 import { join } from "path";
-import { readFile, readToml, writeToml } from "helpers/files";
+import {
+	readFile,
+	readJSON,
+	readToml,
+	writeJSON,
+	writeToml,
+} from "helpers/files";
 import { detectPackageManager } from "helpers/packageManagers";
 import { retry } from "helpers/retry";
 import { sleep } from "helpers/sleep";
@@ -176,7 +182,7 @@ function getFrameworkTests(opts: {
 			next: {
 				testCommitMessage: false,
 				verifyBuildCfTypes: {
-					outputFile: "env.d.ts",
+					outputFile: "cloudflare-env.d.ts",
 					envInterfaceName: "CloudflareEnv",
 				},
 				verifyPreview: {
@@ -187,6 +193,7 @@ function getFrameworkTests(opts: {
 					route: "/",
 					expectedText: "Create Next App",
 				},
+				// see https://github.com/cloudflare/next-on-pages/blob/main/packages/next-on-pages/docs/supported.md#operating-systems
 				unsupportedOSs: ["win32"],
 				unsupportedPms: [
 					// bun and yarn are failing in CI
@@ -469,7 +476,6 @@ function getFrameworkTests(opts: {
 					},
 				],
 				testCommitMessage: true,
-				quarantine: true,
 				verifyBuildCfTypes: {
 					outputFile: "env.d.ts",
 					envInterfaceName: "CloudflareEnv",
@@ -478,6 +484,8 @@ function getFrameworkTests(opts: {
 					route: "/",
 					expectedText: "Create Next App",
 				},
+				// see https://github.com/cloudflare/next-on-pages/blob/main/packages/next-on-pages/docs/supported.md#operating-systems
+				unsupportedOSs: ["win32"],
 				verifyPreview: {
 					route: "/",
 					expectedText: "Create Next App",
@@ -764,17 +772,22 @@ const runCli = async (
  */
 const addTestVarsToWranglerToml = async (projectPath: string) => {
 	const wranglerTomlPath = join(projectPath, "wrangler.toml");
-	let wranglerToml: JsonMap = {};
-	const wranglerTomlExists = existsSync(wranglerTomlPath);
-	if (wranglerTomlExists) {
-		wranglerToml = readToml(wranglerTomlPath);
+	const wranglerJsonPath = join(projectPath, "wrangler.json");
+	if (existsSync(wranglerTomlPath)) {
+		const wranglerToml = readToml(wranglerTomlPath);
+		// Add a TEST var to the wrangler.toml
+		wranglerToml.vars ??= {};
+		(wranglerToml.vars as JsonMap).TEST = "C3_TEST";
+
+		writeToml(wranglerTomlPath, wranglerToml);
+	} else if (existsSync(wranglerJsonPath)) {
+		const wranglerJson = readJSON(wranglerJsonPath);
+		// Add a TEST var to the wrangler.toml
+		wranglerJson.vars ??= {};
+		wranglerJson.vars.TEST = "C3_TEST";
+
+		writeJSON(wranglerJsonPath, wranglerJson);
 	}
-
-	// Add a TEST var to the wrangler.toml
-	wranglerToml.vars ??= {};
-	(wranglerToml.vars as JsonMap).TEST = "C3_TEST";
-
-	writeToml(wranglerTomlPath, wranglerToml);
 };
 
 const verifyDeployment = async (

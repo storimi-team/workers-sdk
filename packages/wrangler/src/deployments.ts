@@ -10,7 +10,8 @@ import { mapBindings } from "./init";
 import { logger } from "./logger";
 import * as metrics from "./metrics";
 import { requireAuth } from "./user";
-import { getScriptName, printWranglerBanner } from ".";
+import { getScriptName } from "./utils/getScriptName";
+import { printWranglerBanner } from "./wrangler-banner";
 import type { Config } from "./config";
 import type { WorkerMetadataBinding } from "./deployment-bundle/create-worker-upload-form";
 import type { ServiceMetadataRes } from "./init";
@@ -156,13 +157,16 @@ export async function rollbackDeployment(
 
 		if (deploys.length < 2) {
 			throw new UserError(
-				"Cannot rollback to previous deployment since there are less than 2 deployments"
+				"Cannot rollback to previous deployment since there are less than 2 deployments",
+				{ telemetryMessage: true }
 			);
 		}
 
 		deploymentId = deploys.at(-2)?.id;
 		if (deploymentId === undefined) {
-			throw new UserError("Cannot find previous deployment");
+			throw new UserError("Cannot find previous deployment", {
+				telemetryMessage: true,
+			});
 		}
 	}
 
@@ -264,7 +268,9 @@ export async function viewDeployment(
 
 		deploymentId = latest.id;
 		if (deploymentId === undefined) {
-			throw new UserError("Cannot find previous deployment");
+			throw new UserError("Cannot find previous deployment", {
+				telemetryMessage: true,
+			});
 		}
 	}
 
@@ -332,7 +338,10 @@ export async function commonDeploymentCMDSetup(
 
 	if (!scriptName) {
 		throw new UserError(
-			`Required Worker name missing. Please specify the Worker name in your ${configFileName(config.configPath)} file, or pass it as an argument with \`--name\``
+			`Required Worker name missing. Please specify the Worker name in your ${configFileName(config.configPath)} file, or pass it as an argument with \`--name\``,
+			{
+				telemetryMessage: `Required Worker name missing. Please specify the Worker name in your config file, or pass it as an argument with \`--name\``,
+			}
 		);
 	}
 

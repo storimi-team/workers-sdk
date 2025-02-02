@@ -1,16 +1,23 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { PerformanceTimer } from "../../utils/performance";
+import { InternalServerErrorResponse } from "../../utils/responses";
 import { setupSentry } from "../../utils/sentry";
+import { mockJaegerBinding } from "../../utils/tracing";
 import { Analytics } from "./analytics";
 import { AssetsManifest } from "./assets-manifest";
 import { applyConfigurationDefaults } from "./configuration";
 import { decodePath, getIntent, handleRequest } from "./handler";
-import { InternalServerErrorResponse } from "./responses";
 import { getAssetWithMetadataFromKV } from "./utils/kv";
-import type { AssetConfig, UnsafePerformanceTimer } from "../../utils/types";
-import type { ColoMetadata, Environment, ReadyAnalytics } from "./types";
+import type {
+	AssetWorkerConfig,
+	ColoMetadata,
+	JaegerTracing,
+	UnsafePerformanceTimer,
+} from "../../utils/types";
+import type { Environment, ReadyAnalytics } from "./types";
+import type { Toucan } from "toucan-js";
 
-type Env = {
+export type Env = {
 	/*
 	 * ASSETS_MANIFEST is a pipeline binding to an ArrayBuffer containing the
 	 * binary-encoded site manifest
@@ -23,12 +30,13 @@ type Env = {
 	 */
 	ASSETS_KV_NAMESPACE: KVNamespace;
 
-	CONFIG: AssetConfig;
+	CONFIG: AssetWorkerConfig;
 
 	SENTRY_DSN: string;
-
 	SENTRY_ACCESS_CLIENT_ID: string;
 	SENTRY_ACCESS_CLIENT_SECRET: string;
+
+	JAEGER: JaegerTracing;
 
 	ENVIRONMENT: Environment;
 	ANALYTICS: ReadyAnalytics;
@@ -56,30 +64,39 @@ export default class extends WorkerEntrypoint<Env> {
 		const startTimeMs = performance.now();
 
 		try {
+			if (!this.env.JAEGER) {
+				// For wrangler tests, if we don't have a jaeger binding, default to a mocked binding
+				this.env.JAEGER = mockJaegerBinding();
+			}
+
 			sentry = setupSentry(
 				request,
 				this.ctx,
 				this.env.SENTRY_DSN,
 				this.env.SENTRY_ACCESS_CLIENT_ID,
-				this.env.SENTRY_ACCESS_CLIENT_SECRET
+				this.env.SENTRY_ACCESS_CLIENT_SECRET,
+				this.env.COLO_METADATA,
+				this.env.CONFIG?.account_id,
+				this.env.CONFIG?.script_id
 			);
 
 			const config = applyConfigurationDefaults(this.env.CONFIG);
 			const userAgent = request.headers.get("user-agent") ?? "UA UNKNOWN";
 
-			if (sentry) {
-				const colo = this.env.COLO_METADATA.coloId;
-				sentry.setTag("colo", this.env.COLO_METADATA.coloId);
-				sentry.setTag("metal", this.env.COLO_METADATA.metalId);
-				sentry.setUser({ userAgent: userAgent, colo: colo });
-			}
-
-			if (this.env.COLO_METADATA && this.env.VERSION_METADATA) {
-				const url = new URL(request.url);
+			const url = new URL(request.url);
+			if (
+				this.env.COLO_METADATA &&
+				this.env.VERSION_METADATA &&
+				this.env.CONFIG
+			) {
 				analytics.setData({
+					accountId: this.env.CONFIG.account_id,
+					scriptId: this.env.CONFIG.script_id,
+
 					coloId: this.env.COLO_METADATA.coloId,
 					metalId: this.env.COLO_METADATA.metalId,
 					coloTier: this.env.COLO_METADATA.coloTier,
+
 					coloRegion: this.env.COLO_METADATA.coloRegion,
 					version: this.env.VERSION_METADATA.id,
 					hostname: url.hostname,
@@ -89,13 +106,31 @@ export default class extends WorkerEntrypoint<Env> {
 				});
 			}
 
-			return handleRequest(
-				request,
-				config,
-				this.unstable_exists.bind(this),
-				this.unstable_getByETag.bind(this)
-			);
+			return await this.env.JAEGER.enterSpan("handleRequest", async (span) => {
+				span.setTags({
+					hostname: url.hostname,
+					eyeballPath: url.pathname,
+					env: this.env.ENVIRONMENT,
+					version: this.env.VERSION_METADATA?.id,
+				});
+
+				return handleRequest(
+					request,
+					this.env,
+					config,
+					this.unstable_exists.bind(this),
+					this.unstable_getByETag.bind(this)
+				);
+			});
 		} catch (err) {
+			const errorResponse = this.handleError(sentry, analytics, err);
+			this.submitMetrics(analytics, performance, startTimeMs);
+			return errorResponse;
+		}
+	}
+
+	handleError(sentry: Toucan | undefined, analytics: Analytics, err: unknown) {
+		try {
 			const response = new InternalServerErrorResponse(err as Error);
 
 			// Log to Sentry if we can
@@ -108,12 +143,26 @@ export default class extends WorkerEntrypoint<Env> {
 			}
 
 			return response;
-		} finally {
-			analytics.setData({ requestTime: performance.now() - startTimeMs });
-			analytics.write();
+		} catch (e) {
+			console.error("Error handling error", e);
+			return new InternalServerErrorResponse(e as Error);
 		}
 	}
 
+	submitMetrics(
+		analytics: Analytics,
+		performance: PerformanceTimer,
+		startTimeMs: number
+	) {
+		try {
+			analytics.setData({ requestTime: performance.now() - startTimeMs });
+			analytics.write();
+		} catch (e) {
+			console.error("Error submitting metrics", e);
+		}
+	}
+
+	// TODO: Trace unstable methods
 	async unstable_canFetch(request: Request): Promise<boolean> {
 		const url = new URL(request.url);
 		const decodedPathname = decodePath(url.pathname);

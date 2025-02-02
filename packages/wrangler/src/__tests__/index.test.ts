@@ -1,7 +1,7 @@
 import { vi } from "vitest";
-import { logPossibleBugMessage } from "..";
 import { getPackageManager } from "../package-manager";
 import { updateCheck } from "../update-check";
+import { logPossibleBugMessage } from "../utils/logPossibleBugMessage";
 import { endEventLoop } from "./helpers/end-event-loop";
 import { mockConsoleMethods } from "./helpers/mock-console";
 import { runInTempDir } from "./helpers/run-in-tmp";
@@ -56,6 +56,7 @@ describe("wrangler", () => {
 				  wrangler d1                     🗄  Manage Workers D1 databases
 				  wrangler vectorize              🧮 Manage Vectorize indexes [open beta]
 				  wrangler hyperdrive             🚀 Manage Hyperdrive databases
+				  wrangler cert                   🪪 Manage client mTLS certificates and CA certificate chains used for secured connections [open-beta]
 				  wrangler pages                  ⚡️ Configure Cloudflare Pages
 				  wrangler mtls-certificate       🪪  Manage certificates used for mTLS connections
 				  wrangler pubsub                 📮 Manage Pub/Sub brokers [private beta]
@@ -68,7 +69,7 @@ describe("wrangler", () => {
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]
 
@@ -112,6 +113,7 @@ describe("wrangler", () => {
 				  wrangler d1                     🗄  Manage Workers D1 databases
 				  wrangler vectorize              🧮 Manage Vectorize indexes [open beta]
 				  wrangler hyperdrive             🚀 Manage Hyperdrive databases
+				  wrangler cert                   🪪 Manage client mTLS certificates and CA certificate chains used for secured connections [open-beta]
 				  wrangler pages                  ⚡️ Configure Cloudflare Pages
 				  wrangler mtls-certificate       🪪  Manage certificates used for mTLS connections
 				  wrangler pubsub                 📮 Manage Pub/Sub brokers [private beta]
@@ -124,7 +126,7 @@ describe("wrangler", () => {
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]
 
@@ -190,7 +192,7 @@ describe("wrangler", () => {
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]"
 			`);
@@ -211,7 +213,7 @@ describe("wrangler", () => {
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]"
 			`);
@@ -233,7 +235,7 @@ describe("wrangler", () => {
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]"
 			`);
@@ -253,7 +255,7 @@ describe("wrangler", () => {
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]"
 			`);
@@ -273,7 +275,7 @@ describe("wrangler", () => {
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]"
 			`);

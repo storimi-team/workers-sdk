@@ -63,6 +63,11 @@ async function handleRawHttp(request: Request, url: URL, env: Env) {
 	// request due to exceeding size limits if the value is included twice.
 
 	const headers = new Headers(request.headers);
+
+	// Fallback to the request method for backward compatiblility
+	const method = request.headers.get("X-CF-Http-Method") ?? request.method;
+
+	headers.delete("X-CF-Http-Method");
 	headers.delete("X-CF-Token");
 
 	const headerEntries = [...headers.entries()];
@@ -74,16 +79,14 @@ async function handleRawHttp(request: Request, url: URL, env: Env) {
 		}
 	}
 
-	const workerResponse = await userObject.fetch(
-		url,
-		new Request(request, {
-			headers: {
-				...Object.fromEntries(headers),
-				"cf-run-user-worker": "true",
-			},
-			redirect: "manual",
-		})
-	);
+	headers.append("cf-run-user-worker", "true");
+
+	const workerResponse = await userObject.fetch(url, {
+		method,
+		headers,
+		body: method === "GET" || method === "HEAD" ? null : request.body,
+		redirect: "manual",
+	});
 
 	const responseHeaders = new Headers(workerResponse.headers);
 

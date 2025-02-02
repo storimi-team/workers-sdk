@@ -413,7 +413,7 @@ describe("wrangler secret", () => {
 					await expect(runWrangler("secret put the-key --name script-name"))
 						.rejects.toThrowErrorMatchingInlineSnapshot(`
 						[Error: More than one account available but unable to select one in non-interactive mode.
-						Please set the appropriate \`account_id\` in your Wrangler configuration file.
+						Please set the appropriate \`account_id\` in your Wrangler configuration file or assign it to the \`CLOUDFLARE_ACCOUNT_ID\` environment variable.
 						Available accounts are (\`<name>\`: \`<account_id>\`):
 						  \`account-name-1\`: \`account-id-1\`
 						  \`account-name-2\`: \`account-id-2\`
@@ -762,10 +762,10 @@ describe("wrangler secret", () => {
 				`"🌀 Creating the secrets for the Worker \\"script-name\\" "`
 			);
 			expect(std.err).toMatchInlineSnapshot(`
-			"[31mX [41;31m[[41;97mERROR[41;31m][0m [1m🚨 Please provide a JSON file or valid JSON pipe[0m
+				"[31mX [41;31m[[41;97mERROR[41;31m][0m [1m🚨 No content found in file, or piped input.[0m
 
-			"
-		`);
+				"
+			`);
 			expect(std.warn).toMatchInlineSnapshot(`""`);
 		});
 
@@ -782,13 +782,13 @@ describe("wrangler secret", () => {
 
 			await runWrangler(`secret bulk --name script-name`);
 			expect(std.out).toMatchInlineSnapshot(`
-			"🌀 Creating the secrets for the Worker \\"script-name\\"
-			✨ Successfully created secret for key: secret1
-			✨ Successfully created secret for key: password
+				"🌀 Creating the secrets for the Worker \\"script-name\\"
+				✨ Successfully created secret for key: secret1
+				✨ Successfully created secret for key: password
 
-			Finished processing secrets JSON file:
-			✨ 2 secrets successfully uploaded"
-		`);
+				Finished processing secrets file:
+				✨ 2 secrets successfully uploaded"
+			`);
 			expect(std.err).toMatchInlineSnapshot(`""`);
 			expect(std.warn).toMatchInlineSnapshot(`""`);
 		});
@@ -807,12 +807,34 @@ describe("wrangler secret", () => {
 			await runWrangler("secret bulk ./secret.json --name script-name");
 
 			expect(std.out).toMatchInlineSnapshot(`
-					"🌀 Creating the secrets for the Worker \\"script-name\\"
-					✨ Successfully created secret for key: secret-name-1
-					✨ Successfully created secret for key: secret-name-2
+				"🌀 Creating the secrets for the Worker \\"script-name\\"
+				✨ Successfully created secret for key: secret-name-1
+				✨ Successfully created secret for key: secret-name-2
 
-					Finished processing secrets JSON file:
-					✨ 2 secrets successfully uploaded"
+				Finished processing secrets file:
+				✨ 2 secrets successfully uploaded"
+			`);
+			expect(std.err).toMatchInlineSnapshot(`""`);
+			expect(std.warn).toMatchInlineSnapshot(`""`);
+		});
+
+		it("should create secrets from a env file", async () => {
+			writeFileSync(
+				".env",
+				`SECRET_NAME_1=secret_text\nSECRET_NAME_2=secret_text`
+			);
+
+			mockBulkRequest();
+
+			await runWrangler("secret bulk ./.env --name script-name");
+
+			expect(std.out).toMatchInlineSnapshot(`
+				"🌀 Creating the secrets for the Worker \\"script-name\\"
+				✨ Successfully created secret for key: SECRET_NAME_1
+				✨ Successfully created secret for key: SECRET_NAME_2
+
+				Finished processing secrets file:
+				✨ 2 secrets successfully uploaded"
 			`);
 			expect(std.err).toMatchInlineSnapshot(`""`);
 			expect(std.warn).toMatchInlineSnapshot(`""`);
@@ -989,13 +1011,13 @@ describe("wrangler secret", () => {
 			await runWrangler("secret bulk ./secret.json --name script-name");
 
 			expect(std.out).toMatchInlineSnapshot(`
-					"🌀 Creating the secrets for the Worker \\"script-name\\"
-					✨ Successfully created secret for key: secret-name-2
-					✨ Successfully created secret for key: secret-name-3
-					✨ Successfully created secret for key: secret-name-4
+				"🌀 Creating the secrets for the Worker \\"script-name\\"
+				✨ Successfully created secret for key: secret-name-2
+				✨ Successfully created secret for key: secret-name-3
+				✨ Successfully created secret for key: secret-name-4
 
-					Finished processing secrets JSON file:
-					✨ 3 secrets successfully uploaded"
+				Finished processing secrets file:
+				✨ 3 secrets successfully uploaded"
 			`);
 			expect(std.err).toMatchInlineSnapshot(`""`);
 			expect(std.warn).toMatchInlineSnapshot(`""`);
@@ -1050,7 +1072,7 @@ describe("wrangler secret", () => {
 				✨ Successfully created secret for key: secret-name-1
 				✨ Successfully created secret for key: secret-name-2
 
-				Finished processing secrets JSON file:
+				Finished processing secrets file:
 				✨ 2 secrets successfully uploaded"
 			`);
 		});
@@ -1065,11 +1087,11 @@ describe("wrangler secret", () => {
 				"wrangler secret:bulk [json]
 
 				POSITIONALS
-				  json  The JSON file of key-value pairs to upload, in form {\\"key\\": value, ...}  [string]
+				  json  The file of key-value pairs to upload, as JSON in form {\\"key\\": value, ...} or .dev.vars file in the form KEY=VALUE  [string]
 
 				GLOBAL FLAGS
 				  -c, --config   Path to Wrangler configuration file  [string]
-				  -e, --env      Environment to use for operations and .env files  [string]
+				  -e, --env      Environment to use for operations, and for selecting .env and .dev.vars files  [string]
 				  -h, --help     Show help  [boolean]
 				  -v, --version  Show version number  [boolean]
 

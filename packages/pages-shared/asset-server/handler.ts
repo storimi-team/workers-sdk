@@ -347,6 +347,7 @@ export async function generateHandler<
 
 	async function attachHeaders(response: Response) {
 		const existingHeaders = new Headers(response.headers);
+		const eTag = existingHeaders.get("eTag")?.match(/^"(.*)"$/)?.[1];
 
 		const extraHeaders = new Headers({
 			"access-control-allow-origin": "*",
@@ -364,13 +365,14 @@ export async function generateHandler<
 
 		if (
 			earlyHintsCache &&
-			isHTMLContentType(response.headers.get("Content-Type"))
+			isHTMLContentType(response.headers.get("Content-Type")) &&
+			eTag
 		) {
 			const preEarlyHintsHeaders = new Headers(headers);
 
 			// "Early Hints cache entries are keyed by request URI and ignore query strings."
 			// https://developers.cloudflare.com/cache/about/early-hints/
-			const earlyHintsCacheKey = `${protocol}//${host}${pathname}`;
+			const earlyHintsCacheKey = `${protocol}//${host}/${eTag}`;
 			const earlyHintsResponse =
 				await earlyHintsCache.match(earlyHintsCacheKey);
 			if (earlyHintsResponse) {
@@ -436,22 +438,30 @@ export async function generateHandler<
 								});
 
 								const linkHeader = preEarlyHintsHeaders.get("Link");
+								const earlyHintsHeaders = new Headers({
+									"Cache-Control": "max-age=2592000", // 30 days
+								});
 								if (linkHeader) {
-									await earlyHintsCache.put(
-										earlyHintsCacheKey,
-										new Response(null, {
-											headers: {
-												Link: linkHeader,
-												"Cache-Control": "max-age=2592000", // 30 days
-											},
-										})
-									);
+									earlyHintsHeaders.append("Link", linkHeader);
 								}
+								await earlyHintsCache.put(
+									earlyHintsCacheKey,
+									new Response(null, { headers: earlyHintsHeaders })
+								);
 							} catch (err) {
 								// Nbd if we fail here in the deferred 'waitUntil' work. We're probably trying to parse a malformed page or something.
 								// Totally fine to skip over any errors.
 								// If we need to debug something, you can uncomment the following:
 								// logError(err)
+								// In any case, let's not bother checking again for another day.
+								await earlyHintsCache.put(
+									earlyHintsCacheKey,
+									new Response(null, {
+										headers: {
+											"Cache-Control": "max-age=86400", // 1 day
+										},
+									})
+								);
 							}
 						})()
 					);

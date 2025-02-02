@@ -1,5 +1,61 @@
 # @cloudflare/pages-shared
 
+## 0.13.5
+
+### Patch Changes
+
+- Updated dependencies [[`ab49886`](https://github.com/cloudflare/workers-sdk/commit/ab498862b96551774f601403d3e93d2105a18a91)]:
+  - miniflare@3.20250129.0
+
+## 0.13.4
+
+### Patch Changes
+
+- Updated dependencies [[`cf4f47a`](https://github.com/cloudflare/workers-sdk/commit/cf4f47a8af2dc476f8a0e61f0d22f080f191de1f)]:
+  - miniflare@3.20250124.1
+
+## 0.13.3
+
+### Patch Changes
+
+- Updated dependencies [[`40f89a9`](https://github.com/cloudflare/workers-sdk/commit/40f89a90d93f57294e49a6b5ed8ba8cc38e0da77)]:
+  - miniflare@3.20250124.0
+
+## 0.13.2
+
+### Patch Changes
+
+- [#7564](https://github.com/cloudflare/workers-sdk/pull/7564) [`147ab7d`](https://github.com/cloudflare/workers-sdk/commit/147ab7dda6af0546c9ba7b589390aa590e4d6d02) Thanks [@GregBrimble](https://github.com/GregBrimble)! - fix: Key the Early Hints cache entries off of the asset key rather than the request path
+
+## 0.13.1
+
+### Patch Changes
+
+- Updated dependencies [[`8e9aa40`](https://github.com/cloudflare/workers-sdk/commit/8e9aa40a6c914a3a9804dccdca7202aecda45ba7)]:
+  - miniflare@3.20241230.2
+
+## 0.13.0
+
+### Minor Changes
+
+- [#7561](https://github.com/cloudflare/workers-sdk/pull/7561) [`8b48ca6`](https://github.com/cloudflare/workers-sdk/commit/8b48ca6f18160d350cdde7f21a2a9fbb6add45d5) Thanks [@GregBrimble](https://github.com/GregBrimble)! - feat: Return a 304 Not Modified response when matching an asset preservation cache request if appropriate
+
+### Patch Changes
+
+- [#7561](https://github.com/cloudflare/workers-sdk/pull/7561) [`8b48ca6`](https://github.com/cloudflare/workers-sdk/commit/8b48ca6f18160d350cdde7f21a2a9fbb6add45d5) Thanks [@GregBrimble](https://github.com/GregBrimble)! - chore: Remove now-unused asset preservation cache (v1)
+
+- [#7561](https://github.com/cloudflare/workers-sdk/pull/7561) [`8b48ca6`](https://github.com/cloudflare/workers-sdk/commit/8b48ca6f18160d350cdde7f21a2a9fbb6add45d5) Thanks [@GregBrimble](https://github.com/GregBrimble)! - fix: Store an empty result when Early Hints parsing returns nothing or errors. Previously, we weren't storing anything which resulted in Early Hints being parsed on every request.
+
+- Updated dependencies [[`2c76887`](https://github.com/cloudflare/workers-sdk/commit/2c7688737346992d046d2f88eba5c9847ede1365), [`78bdec5`](https://github.com/cloudflare/workers-sdk/commit/78bdec59ce880365b0318eb94d4176b53e950f66)]:
+  - miniflare@3.20241230.1
+
+## 0.12.1
+
+### Patch Changes
+
+- Updated dependencies [[`b4e0af1`](https://github.com/cloudflare/workers-sdk/commit/b4e0af163548ee8cc0aefc9165f67a0f83ea94d4)]:
+  - miniflare@3.20241230.0
+
 ## 0.12.0
 
 ### Minor Changes

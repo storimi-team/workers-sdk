@@ -28,7 +28,6 @@ import {
 	coupleWebSocket,
 	DispatchFetch,
 	DispatchFetchDispatcher,
-	ENTRY_SOCKET_HTTP_OPTIONS,
 	fetch,
 	getAccessibleHosts,
 	getEntrySocketHttpOptions,
@@ -1118,7 +1117,7 @@ export class Miniflare {
 			sockets.push({
 				name: SOCKET_ENTRY_LOCAL,
 				service: { name: SERVICE_ENTRY },
-				http: ENTRY_SOCKET_HTTP_OPTIONS,
+				http: {},
 				address: "127.0.0.1:0",
 			});
 		}

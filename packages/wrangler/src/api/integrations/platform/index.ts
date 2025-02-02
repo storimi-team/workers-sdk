@@ -5,7 +5,6 @@ import { DEFAULT_MODULE_RULES } from "../../../deployment-bundle/rules";
 import { getBindings } from "../../../dev";
 import { getBoundRegisteredWorkers } from "../../../dev-registry";
 import { getClassNamesWhichUseSQLite } from "../../../dev/class-names-sqlite";
-import { getVarsForDev } from "../../../dev/dev-vars";
 import {
 	buildAssetOptions,
 	buildMiniflareBindingOptions,
@@ -50,12 +49,6 @@ export type GetPlatformProxyOptions = {
 	 * If `false` is specified no data is persisted on the filesystem.
 	 */
 	persist?: boolean | { path: string };
-	/**
-	 * Use the experimental file-based dev registry for service discovery
-	 *
-	 * Note: this feature is experimental
-	 */
-	experimentalRegistry?: boolean;
 };
 
 /**
@@ -110,7 +103,6 @@ export async function getPlatformProxy<
 
 	const miniflareOptions = await run(
 		{
-			FILE_BASED_REGISTRY: Boolean(options.experimentalRegistry ?? true),
 			MULTIWORKER: false,
 			RESOURCES_PROVISION: false,
 		},
@@ -125,16 +117,11 @@ export async function getPlatformProxy<
 
 	const bindings: Env = await mf.getBindings();
 
-	const vars = getVarsForDev(rawConfig, env);
-
 	const cf = await mf.getCf();
 	deepFreeze(cf);
 
 	return {
-		env: {
-			...vars,
-			...bindings,
-		},
+		env: bindings,
 		cf: cf as CfProperties,
 		ctx: new ExecutionContext(),
 		caches: new CacheStorage(),
@@ -259,7 +246,8 @@ export function unstable_getMiniflareWorkerOptions(
 	env?: string
 ): Unstable_MiniflareWorkerOptions;
 export function unstable_getMiniflareWorkerOptions(
-	config: Config
+	config: Config,
+	env?: string
 ): Unstable_MiniflareWorkerOptions;
 export function unstable_getMiniflareWorkerOptions(
 	configOrConfigPath: string | Config,

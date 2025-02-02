@@ -12,6 +12,8 @@ Telemetry in Wrangler allows us to better identify bugs and gain visibility on u
 
 - What command is being run (e.g. `wrangler deploy`, `wrangler dev`)
 - Anonymized arguments and flags given to Wrangler (e.g. `wrangler deploy ./src/index.ts --dry-run=true --outdir=dist` would be sent as `wrangler deploy REDACTED --dry-run=true --outdir=REDACTED`)
+- Anonymized information about your Worker (e.g. whether or not Workers Assets is being used, whether or not TypeScript is being used)
+- Information about your connection to Cloudflare's API (e.g. how long it takes Wrangler to deploy your Worker)
 - The version of the Wrangler client that is sending the event
 - The package manager that the Wrangler client is using. (e.g. npm, yarn)
 - The major version of Node.js that the Wrangler client is running on
@@ -19,7 +21,7 @@ Telemetry in Wrangler allows us to better identify bugs and gain visibility on u
 - The format of the Wrangler configuration file (e.g. `toml`, `jsonc`)
 - Total session duration of the command run (e.g. 3 seconds, etc.)
 - Whether the Wrangler client is running in CI or in an interactive instance
-- Error _type_, if one occurs (e.g. `APIError` or `UserError`)
+- Error _type_ (e.g. `APIError` or `UserError`), and sanitised error messages that will not include user information like filepaths or stack traces (e.g. `Asset too large`).
 - General machine information such as OS and OS Version
 
 Cloudflare will receive the IP address associated with your machine and such information is handled in accordance with Cloudflare’s [Privacy Policy](https://www.cloudflare.com/privacypolicy/).

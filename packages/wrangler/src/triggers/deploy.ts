@@ -28,7 +28,6 @@ type Props = {
 	routes: string[] | undefined;
 	legacyEnv: boolean | undefined;
 	dryRun: boolean | undefined;
-	experimentalVersions: boolean | undefined;
 	assetsOptions: AssetsOptions | undefined;
 };
 
@@ -257,6 +256,15 @@ export default async function triggersDeploy(
 		logger.once.warn("Workflows is currently in open beta.");
 
 		for (const workflow of config.workflows) {
+			// NOTE: if the user provides a script_name thats not this script (aka bounds to another worker)
+			// we don't want to send this worker's config.
+			if (
+				workflow.script_name !== undefined &&
+				workflow.script_name !== scriptName
+			) {
+				continue;
+			}
+
 			deployments.push(
 				fetchResult(`/accounts/${accountId}/workflows/${workflow.name}`, {
 					method: "PUT",
@@ -276,10 +284,7 @@ export default async function triggersDeploy(
 	const deployMs = Date.now() - start - uploadMs;
 
 	if (deployments.length > 0) {
-		const msg = props.experimentalVersions
-			? `Deployed ${workerName} triggers`
-			: `Published ${workerName}`;
-		logger.log(msg, formatTime(deployMs));
+		logger.log(`Deployed ${workerName} triggers`, formatTime(deployMs));
 
 		const flatTargets = targets.flat().map(
 			// Append protocol only on workers.dev domains

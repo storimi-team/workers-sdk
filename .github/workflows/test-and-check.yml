@@ -101,11 +101,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-13]
-        filter: ["./packages/*", "./fixtures/*"]
+        filter:
+          - '--filter="./packages/*" --filter="./fixtures/*" --filter="./packages/vite-plugin-cloudflare/playground"'
         # Things in the tools folder are for running in CI, and so only need to run on linux
         include:
           - os: ubuntu-latest
-            filter: "./tools"
+            filter: '--filter="./tools"'
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Repo
@@ -131,7 +132,7 @@ jobs:
 
       - name: Run tests
         if: steps.changes.outputs.everything_but_markdown == 'true'
-        run: pnpm run test:ci --concurrency 1 --filter=${{ matrix.filter }}
+        run: pnpm run test:ci --concurrency 1 ${{ matrix.filter }}
         env:
           TMP_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TMP_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -139,17 +140,3 @@ jobs:
           WRANGLER_LOG_PATH: ${{ runner.temp }}/wrangler-debug-logs/
           TEST_REPORT_PATH: ${{ runner.temp }}/test-report/index.html
           CI_OS: ${{ runner.os }}
-
-      - name: Upload debug logs
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: e2e-test-debug-logs-${{ matrix.os }}-${{ matrix.node }}
-          path: ${{ runner.temp }}/wrangler-debug-logs/
-
-      - name: Upload test report
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: e2e-test-report-${{ matrix.os }}-${{ matrix.node }}
-          path: ${{ runner.temp }}/test-report/

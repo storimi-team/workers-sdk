@@ -1,19 +1,20 @@
-import module from "node:module";
 import os from "node:os";
 import { setTimeout } from "node:timers/promises";
-import TOML from "@iarna/toml";
 import chalk from "chalk";
 import { ProxyAgent, setGlobalDispatcher } from "undici";
 import makeCLI from "yargs";
 import { version as wranglerVersion } from "../package.json";
 import { ai } from "./ai";
-import { cloudchamber } from "./cloudchamber";
 import {
-	configFileName,
-	experimental_readRawConfig,
-	formatConfigSnippet,
-	loadDotEnv,
-} from "./config";
+	certDeleteCommand,
+	certListCommand,
+	certNamespace,
+	certUploadCaCertCommand,
+	certUploadMtlsCommand,
+	certUploadNamespace,
+} from "./cert/cert";
+import { cloudchamber } from "./cloudchamber";
+import { experimental_readRawConfig, loadDotEnv } from "./config";
 import { demandSingleValue } from "./core";
 import { CommandRegistry } from "./core/CommandRegistry";
 import { createRegisterYargsCommand } from "./core/register-yargs-command";
@@ -25,12 +26,6 @@ import {
 	isBuildFailure,
 	isBuildFailureFromCause,
 } from "./deployment-bundle/build-failures";
-import {
-	commonDeploymentCMDSetup,
-	deployments,
-	rollbackDeployment,
-	viewDeployment,
-} from "./deployments";
 import {
 	buildHandler,
 	buildOptions,
@@ -151,14 +146,15 @@ import {
 	closeSentry,
 	setupSentry,
 } from "./sentry";
-import { tailHandler, tailOptions } from "./tail";
+import { tailCommand } from "./tail";
 import registerTriggersSubcommands from "./triggers";
-import { typesHandler, typesOptions } from "./type-generation";
-import { updateCheck } from "./update-check";
+import { typesCommand } from "./type-generation";
 import { getAuthFromEnv } from "./user";
 import { loginCommand, logoutCommand, whoamiCommand } from "./user/commands";
 import { whoami } from "./user/whoami";
+import { betaCmdColor, proxy } from "./utils/constants";
 import { debugLogFilepath } from "./utils/log-file";
+import { logPossibleBugMessage } from "./utils/logPossibleBugMessage";
 import { vectorize } from "./vectorize/index";
 import { versionsNamespace } from "./versions";
 import { versionsDeployCommand } from "./versions/deploy";
@@ -187,22 +183,8 @@ import { workflowsListCommand } from "./workflows/commands/list";
 import { workflowsTriggerCommand } from "./workflows/commands/trigger";
 import { printWranglerBanner } from "./wrangler-banner";
 import { asJson } from "./yargs-types";
-import type { Config } from "./config";
 import type { LoggerLevel } from "./logger";
 import type { CommonYargsArgv, SubHelp } from "./yargs-types";
-
-const resetColor = "\x1b[0m";
-const fgGreenColor = "\x1b[32m";
-export const betaCmdColor = "#BD5B08";
-
-export const DEFAULT_LOCAL_PORT = 8787;
-export const DEFAULT_INSPECTOR_PORT = 9229;
-export const proxy =
-	process.env.https_proxy ||
-	process.env.HTTPS_PROXY ||
-	process.env.http_proxy ||
-	process.env.HTTP_PROXY ||
-	undefined;
 
 if (proxy) {
 	setGlobalDispatcher(new ProxyAgent(proxy));
@@ -211,76 +193,7 @@ if (proxy) {
 	);
 }
 
-export function getRules(config: Config): Config["rules"] {
-	const rules = config.rules ?? config.build?.upload?.rules ?? [];
-
-	if (config.rules && config.build?.upload?.rules) {
-		throw new UserError(
-			`You cannot configure both [rules] and [build.upload.rules] in your ${configFileName(config.configPath)} file. Delete the \`build.upload\` section.`
-		);
-	}
-
-	if (config.build?.upload?.rules) {
-		logger.warn(
-			`Deprecation: The \`build.upload.rules\` config field is no longer used, the rules should be specified via the \`rules\` config field. Delete the \`build.upload\` field from the configuration file, and add this:
-
-${TOML.stringify({ rules: config.build.upload.rules })}`
-		);
-	}
-	return rules;
-}
-
-export function isLegacyEnv(config: Config): boolean {
-	// We only read from config here, because we've already accounted for
-	// args["legacy-env"] in https://github.com/cloudflare/workers-sdk/blob/b24aeb5722370c2e04bce97a84a1fa1e55725d79/packages/wrangler/src/config/validation.ts#L94-L98
-	return config.legacy_env;
-}
-
-export function getScriptName(
-	args: { name: string | undefined; env: string | undefined },
-	config: Config
-): string | undefined {
-	if (args.name && isLegacyEnv(config) && args.env) {
-		throw new CommandLineArgsError(
-			`In legacy environment mode you cannot use --name and --env together. If you want to specify a Worker name for a specific environment you can add the following to your ${configFileName(config.configPath)} file:\n` +
-				formatConfigSnippet(
-					{
-						env: {
-							[args.env]: {
-								name: args.name,
-							},
-						},
-					},
-					config.configPath
-				)
-		);
-	}
-
-	return args.name ?? config.name;
-}
-
-/**
- * Alternative to the getScriptName() because special Legacy cases allowed
- * "name", and "env" together in Wrangler v1
- */
-export function getLegacyScriptName(
-	args: { name: string | undefined; env: string | undefined },
-	config: Config
-) {
-	return args.name && args.env && isLegacyEnv(config)
-		? `${args.name}-${args.env}`
-		: args.name ?? config.name;
-}
-
 export function createCLIParser(argv: string[]) {
-	const experimentalGradualRollouts =
-		// original flag -- using internal product name (Gradual Rollouts) -- kept for temp back-compat
-		!argv.includes("--no-experimental-gradual-rollouts") &&
-		// new flag -- using external product name (Versions)
-		!argv.includes("--no-experimental-versions") &&
-		// new flag -- shorthand
-		!argv.includes("--no-x-versions");
-
 	// Type check result against CommonYargsOptions to make sure we've included
 	// all common options
 	const wrangler: CommonYargsArgv = makeCLI(argv)
@@ -293,7 +206,9 @@ export function createCLIParser(argv: string[]) {
 			if (!error || error.name === "YError") {
 				// If there is no error or the error is a "YError", then this came from yargs own validation
 				// Wrap it in a `CommandLineArgsError` so that we can handle it appropriately further up.
-				error = new CommandLineArgsError(msg);
+				error = new CommandLineArgsError(msg, {
+					telemetryMessage: "yargs validation error",
+				});
 			}
 			throw error;
 		})
@@ -315,11 +230,17 @@ export function createCLIParser(argv: string[]) {
 			requiresArg: true,
 		})
 		.check(
-			demandSingleValue("config", (configArgv) => configArgv["_"][0] === "dev")
+			demandSingleValue(
+				"config",
+				(configArgv) =>
+					configArgv["_"][0] === "dev" ||
+					(configArgv["_"][0] === "pages" && configArgv["_"][1] === "dev")
+			)
 		)
 		.option("env", {
 			alias: "e",
-			describe: "Environment to use for operations and .env files",
+			describe:
+				"Environment to use for operations, and for selecting .env and .dev.vars files",
 			type: "string",
 			requiresArg: true,
 		})
@@ -335,17 +256,11 @@ export function createCLIParser(argv: string[]) {
 		.check((args) => {
 			if (args["experimental-json-config"] === false) {
 				throw new CommandLineArgsError(
-					`Wrangler now supports wrangler.json configuration files by default and ignores the value of the \`--experimental-json-config\` flag.`
+					`Wrangler now supports wrangler.json configuration files by default and ignores the value of the \`--experimental-json-config\` flag.`,
+					{ telemetryMessage: true }
 				);
 			}
 			return true;
-		})
-		.option("experimental-versions", {
-			describe: `Experimental: support Worker Versions`,
-			type: "boolean",
-			default: true,
-			hidden: true,
-			alias: ["x-versions", "experimental-gradual-rollouts"],
 		})
 		.check((args) => {
 			// Grab locally specified env params from `.env` file
@@ -479,170 +394,79 @@ export function createCLIParser(argv: string[]) {
 		deployHandler
 	);
 
-	if (experimentalGradualRollouts) {
-		registry.define([
-			{ command: "wrangler deployments", definition: deploymentsNamespace },
-			{
-				command: "wrangler deployments list",
-				definition: deploymentsListCommand,
-			},
-			{
-				command: "wrangler deployments status",
-				definition: deploymentsStatusCommand,
-			},
-			{
-				command: "wrangler deployments view",
-				definition: deploymentsViewCommand,
-			},
-		]);
-		registry.registerNamespace("deployments");
-	} else {
-		wrangler.command(
-			"deployments",
-			"🚢 List and view the current and past deployments for your Worker",
-			(yargs) =>
-				yargs
-					.option("name", {
-						describe: "The name of your Worker",
-						type: "string",
-					})
-					.command(
-						"list",
-						"Displays the 10 most recent deployments for a Worker",
-						async (listYargs) => listYargs,
-						async (listYargs) => {
-							const { accountId, scriptName, config } =
-								await commonDeploymentCMDSetup(listYargs);
-							await deployments(accountId, scriptName, config);
-						}
-					)
-					.command(
-						"view [deployment-id]",
-						"View a deployment",
-						async (viewYargs) =>
-							viewYargs.positional("deployment-id", {
-								describe: "The ID of the deployment you want to inspect",
-								type: "string",
-								demandOption: false,
-							}),
-						async (viewYargs) => {
-							const { accountId, scriptName, config } =
-								await commonDeploymentCMDSetup(viewYargs);
+	registry.define([
+		{ command: "wrangler deployments", definition: deploymentsNamespace },
+		{
+			command: "wrangler deployments list",
+			definition: deploymentsListCommand,
+		},
+		{
+			command: "wrangler deployments status",
+			definition: deploymentsStatusCommand,
+		},
+		{
+			command: "wrangler deployments view",
+			definition: deploymentsViewCommand,
+		},
+	]);
+	registry.registerNamespace("deployments");
 
-							await viewDeployment(
-								accountId,
-								scriptName,
-								config,
-								viewYargs.deploymentId
-							);
-						}
-					)
-					.command(subHelp)
-		);
-	}
+	registry.define([
+		{ command: "wrangler rollback", definition: versionsRollbackCommand },
+	]);
+	registry.registerNamespace("rollback");
 
-	// rollback
-	const rollbackDescription = "🔙 Rollback a deployment for a Worker";
+	registry.define([
+		{
+			command: "wrangler versions",
+			definition: versionsNamespace,
+		},
+		{
+			command: "wrangler versions view",
+			definition: versionsViewCommand,
+		},
+		{
+			command: "wrangler versions list",
+			definition: versionsListCommand,
+		},
+		{
+			command: "wrangler versions upload",
+			definition: versionsUploadCommand,
+		},
+		{
+			command: "wrangler versions deploy",
+			definition: versionsDeployCommand,
+		},
+		{
+			command: "wrangler versions secret",
+			definition: versionsSecretNamespace,
+		},
+		{
+			command: "wrangler versions secret put",
+			definition: versionsSecretPutCommand,
+		},
+		{
+			command: "wrangler versions secret bulk",
+			definition: versionsSecretBulkCommand,
+		},
+		{
+			command: "wrangler versions secret delete",
+			definition: versionsSecretDeleteCommand,
+		},
+		{
+			command: "wrangler versions secret list",
+			definition: versionsSecretsListCommand,
+		},
+	]);
+	registry.registerNamespace("versions");
 
-	if (experimentalGradualRollouts) {
-		registry.define([
-			{ command: "wrangler rollback", definition: versionsRollbackCommand },
-		]);
-		registry.registerNamespace("rollback");
-	} else {
-		wrangler.command(
-			"rollback [deployment-id]",
-			rollbackDescription,
-			(rollbackYargs) =>
-				rollbackYargs
-					.positional("deployment-id", {
-						describe: "The ID of the deployment to rollback to",
-						type: "string",
-						demandOption: false,
-					})
-					.option("message", {
-						alias: "m",
-						describe:
-							"Skip confirmation and message prompts, uses provided argument as message",
-						type: "string",
-						default: undefined,
-					})
-					.option("name", {
-						describe: "The name of your Worker",
-						type: "string",
-					}),
-			async (rollbackYargs) => {
-				const { accountId, scriptName, config } =
-					await commonDeploymentCMDSetup(rollbackYargs);
-
-				await rollbackDeployment(
-					accountId,
-					scriptName,
-					config,
-					rollbackYargs.deploymentId,
-					rollbackYargs.message
-				);
-			}
-		);
-	}
-
-	// versions
-	if (experimentalGradualRollouts) {
-		registry.define([
-			{
-				command: "wrangler versions",
-				definition: versionsNamespace,
-			},
-			{
-				command: "wrangler versions view",
-				definition: versionsViewCommand,
-			},
-			{
-				command: "wrangler versions list",
-				definition: versionsListCommand,
-			},
-			{
-				command: "wrangler versions upload",
-				definition: versionsUploadCommand,
-			},
-			{
-				command: "wrangler versions deploy",
-				definition: versionsDeployCommand,
-			},
-			{
-				command: "wrangler versions secret",
-				definition: versionsSecretNamespace,
-			},
-			{
-				command: "wrangler versions secret put",
-				definition: versionsSecretPutCommand,
-			},
-			{
-				command: "wrangler versions secret bulk",
-				definition: versionsSecretBulkCommand,
-			},
-			{
-				command: "wrangler versions secret delete",
-				definition: versionsSecretDeleteCommand,
-			},
-			{
-				command: "wrangler versions secret list",
-				definition: versionsSecretsListCommand,
-			},
-		]);
-		registry.registerNamespace("versions");
-	}
-
-	// triggers
-	if (experimentalGradualRollouts) {
-		wrangler.command(
-			"triggers",
-			"🎯 Updates the triggers of your current deployment",
-			(yargs) => {
-				return registerTriggersSubcommands(yargs.command(subHelp));
-			}
-		);
-	}
+	wrangler.command(
+		"triggers",
+		"🎯 Updates the triggers of your current deployment",
+		(yargs) => {
+			return registerTriggersSubcommands(yargs.command(subHelp));
+		}
+	);
 
 	// delete
 	wrangler.command(
@@ -653,12 +477,8 @@ export function createCLIParser(argv: string[]) {
 	);
 
 	// tail
-	wrangler.command(
-		"tail [worker]",
-		"🦚 Start a log tailing session for a Worker",
-		tailOptions,
-		tailHandler
-	);
+	registry.define([{ command: "wrangler tail", definition: tailCommand }]);
+	registry.registerNamespace("tail");
 
 	// secret
 	wrangler.command(
@@ -670,12 +490,8 @@ export function createCLIParser(argv: string[]) {
 	);
 
 	// types
-	wrangler.command(
-		"types [path]",
-		"📝 Generate types from bindings and module rules in configuration\n",
-		typesOptions,
-		typesHandler
-	);
+	registry.define([{ command: "wrangler types", definition: typesCommand }]);
+	registry.registerNamespace("types");
 
 	/******************** CMD GROUP ***********************/
 	registry.define([
@@ -896,6 +712,23 @@ export function createCLIParser(argv: string[]) {
 			return hyperdrive(hyperdriveYargs.command(subHelp));
 		}
 	);
+
+	// cert - includes mtls-certificates and CA cert management
+	registry.define([
+		{ command: "wrangler cert", definition: certNamespace },
+		{ command: "wrangler cert upload", definition: certUploadNamespace },
+		{
+			command: "wrangler cert upload mtls-certificate",
+			definition: certUploadMtlsCommand,
+		},
+		{
+			command: "wrangler cert upload certificate-authority",
+			definition: certUploadCaCertCommand,
+		},
+		{ command: "wrangler cert list", definition: certListCommand },
+		{ command: "wrangler cert delete", definition: certDeleteCommand },
+	]);
+	registry.registerNamespace("cert");
 
 	// pages
 	wrangler.command("pages", "⚡️ Configure Cloudflare Pages", (pagesYargs) => {
@@ -1199,6 +1032,7 @@ export async function main(argv: string[]): Promise<void> {
 		cliHandlerThrew = true;
 		let mayReport = true;
 		let errorType: string | undefined;
+		let loggableException = e;
 
 		logger.log(""); // Just adds a bit of space
 		if (e instanceof CommandLineArgsError) {
@@ -1264,7 +1098,6 @@ export async function main(argv: string[]): Promise<void> {
 			errorType = "BuildFailure";
 			logBuildFailure(e.cause.errors, e.cause.warnings);
 		} else {
-			let loggableException = e;
 			if (
 				// Is this a StartDevEnv error event? If so, unwrap the cause, which is usually the user-recognisable error
 				e &&
@@ -1295,13 +1128,12 @@ export async function main(argv: string[]): Promise<void> {
 			// Only report the error if we didn't just handle it
 			mayReport &&
 			// ...and it's not a user error
-			!(e instanceof UserError) &&
+			!(loggableException instanceof UserError) &&
 			// ...and it's not an un-reportable API error
-			!(e instanceof APIError && !e.reportable)
+			!(loggableException instanceof APIError && !loggableException.reportable)
 		) {
-			await captureGlobalException(e);
+			await captureGlobalException(loggableException);
 		}
-
 		const durationMs = Date.now() - startTime;
 
 		dispatcher?.sendCommandEvent(
@@ -1314,6 +1146,7 @@ export async function main(argv: string[]): Promise<void> {
 				durationMinutes: durationMs / 1000 / 60,
 				errorType:
 					errorType ?? (e instanceof Error ? e.constructor.name : undefined),
+				errorMessage: e instanceof UserError ? e.telemetryMessage : undefined,
 			},
 			argv
 		);
@@ -1349,44 +1182,3 @@ export async function main(argv: string[]): Promise<void> {
 		}
 	}
 }
-
-export function getDevCompatibilityDate(
-	config: Config,
-	compatibilityDate = config.compatibility_date
-): string {
-	// Get the maximum compatibility date supported by the installed Miniflare
-	const miniflareEntry = require.resolve("miniflare");
-	const miniflareRequire = module.createRequire(miniflareEntry);
-	const miniflareWorkerd = miniflareRequire("workerd") as {
-		compatibilityDate: string;
-	};
-	const currentDate = miniflareWorkerd.compatibilityDate;
-
-	if (config.configPath !== undefined && compatibilityDate === undefined) {
-		logger.warn(
-			`No compatibility_date was specified. Using the installed Workers runtime's latest supported date: ${currentDate}.\n` +
-				`❯❯ Add one to your ${configFileName(config.configPath)} file: compatibility_date = "${currentDate}", or\n` +
-				`❯❯ Pass it in your terminal: wrangler dev [<SCRIPT>] --compatibility-date=${currentDate}\n\n` +
-				"See https://developers.cloudflare.com/workers/platform/compatibility-dates/ for more information."
-		);
-	}
-	return compatibilityDate ?? currentDate;
-}
-
-/**
- * Write a message to the log that tells the user what they might do after we have reported an unexpected error.
- */
-export async function logPossibleBugMessage() {
-	logger.log(
-		`${fgGreenColor}%s${resetColor}`,
-		"If you think this is a bug then please create an issue at https://github.com/cloudflare/workers-sdk/issues/new/choose"
-	);
-	const latestVersion = await updateCheck();
-	if (latestVersion) {
-		logger.log(
-			`Note that there is a newer version of Wrangler available (${latestVersion}). Consider checking whether upgrading resolves this error.`
-		);
-	}
-}
-
-export { printWranglerBanner };

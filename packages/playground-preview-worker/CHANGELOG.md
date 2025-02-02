@@ -1,5 +1,17 @@
 # playground-preview-worker
 
+## 0.1.3
+
+### Patch Changes
+
+- [#7793](https://github.com/cloudflare/workers-sdk/pull/7793) [`9941219`](https://github.com/cloudflare/workers-sdk/commit/994121908de7b0537c06ed4f6bae6cb35d32521d) Thanks [@edmundhung](https://github.com/edmundhung)! - fix: ensure no body is passed when constructing a GET or HEAD request to the preview worker
+
+## 0.1.2
+
+### Patch Changes
+
+- [#7630](https://github.com/cloudflare/workers-sdk/pull/7630) [`b687dff`](https://github.com/cloudflare/workers-sdk/commit/b687dffa7cf9f77e553f475d6a400c3560a360e9) Thanks [@edmundhung](https://github.com/edmundhung)! - fix OPTIONS raw http request support by overriding raw request method with the X-CF-Http-Method header
+
 ## 0.1.1
 
 ### Patch Changes

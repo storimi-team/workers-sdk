@@ -1,5 +1,59 @@
 # @cloudflare/workers-shared
 
+## 0.13.0
+
+### Minor Changes
+
+- [#7897](https://github.com/cloudflare/workers-sdk/pull/7897) [`34f9797`](https://github.com/cloudflare/workers-sdk/commit/34f9797822836b98edc4d8ddc6e2fb0ab322b864) Thanks [@WillTaylorDev](https://github.com/WillTaylorDev)! - chore: provides `run_worker_first` for Worker-script-first configuration. Deprecates `experimental_serve_directly`.
+
+## 0.12.5
+
+### Patch Changes
+
+- [#7906](https://github.com/cloudflare/workers-sdk/pull/7906) [`f5eaf4b`](https://github.com/cloudflare/workers-sdk/commit/f5eaf4bd2fcfdf19a40dd3056fc9b36c2654605c) Thanks [@WillTaylorDev](https://github.com/WillTaylorDev)! - Fixes bug in router-worker that prevents unexpected errors from being captured.
+
+## 0.12.4
+
+### Patch Changes
+
+- [#7887](https://github.com/cloudflare/workers-sdk/pull/7887) [`cab3e37`](https://github.com/cloudflare/workers-sdk/commit/cab3e37f66e8cbcf0f16898eff1827db1126901b) Thanks [@WalshyDev](https://github.com/WalshyDev)! - chore: add more observability into asset-worker for the Workers team to better insight into how requests are handled.
+
+- [#7887](https://github.com/cloudflare/workers-sdk/pull/7887) [`cab3e37`](https://github.com/cloudflare/workers-sdk/commit/cab3e37f66e8cbcf0f16898eff1827db1126901b) Thanks [@WalshyDev](https://github.com/WalshyDev)! - chore: add tracing into router-worker so the Workers team can have a better insight into into how requests are handled.
+
+## 0.12.3
+
+### Patch Changes
+
+- [#7844](https://github.com/cloudflare/workers-sdk/pull/7844) [`92ed81e`](https://github.com/cloudflare/workers-sdk/commit/92ed81e9f35c4bc951da79be7fb08e7e60fb1f48) Thanks [@WalshyDev](https://github.com/WalshyDev)! - chore: plumb through account ID and Worker ID into the asset-worker and router-worker for use in analytics and error reporting.
+
+## 0.12.2
+
+### Patch Changes
+
+- [#7808](https://github.com/cloudflare/workers-sdk/pull/7808) [`7faabeb`](https://github.com/cloudflare/workers-sdk/commit/7faabeb1d1534818d0e93fe4e4710e9b77af1bfb) Thanks [@WalshyDev](https://github.com/WalshyDev)! - fix: fix analytics not being logged for `asset-worker` in the case of a successful request.
+
+## 0.12.1
+
+### Patch Changes
+
+- [#7790](https://github.com/cloudflare/workers-sdk/pull/7790) [`c588c8a`](https://github.com/cloudflare/workers-sdk/commit/c588c8a79592979ef62489516593df7ca5b96901) Thanks [@WalshyDev](https://github.com/WalshyDev)! - fix: remove `--experimental-versions` flag from the Asset/Router Workers `deploy` scripts, now that Wrangler has removed the flag.
+
+## 0.12.0
+
+### Minor Changes
+
+- [#7761](https://github.com/cloudflare/workers-sdk/pull/7761) [`bb85c9a`](https://github.com/cloudflare/workers-sdk/commit/bb85c9ac10d23407085ff8cd479bd0469835c60f) Thanks [@WillTaylorDev](https://github.com/WillTaylorDev)! - Adds jaeger tracing for asset-worker.
+
+### Patch Changes
+
+- [#7768](https://github.com/cloudflare/workers-sdk/pull/7768) [`97603f0`](https://github.com/cloudflare/workers-sdk/commit/97603f031b30b8a289519ff48f2c2c39b1396656) Thanks [@WalshyDev](https://github.com/WalshyDev)! - fix: on a 404 from KV, we do not want the asset to stay in cache for the normal 1 year TTL. Instead we want to re-insert with a 60s TTL to revalidate and prevent a bad 404 from persisting.
+
+## 0.11.2
+
+### Patch Changes
+
+- [#7612](https://github.com/cloudflare/workers-sdk/pull/7612) [`2e78812`](https://github.com/cloudflare/workers-sdk/commit/2e78812ade7cd7361b023c90afe06221a52b79eb) Thanks [@Cherry](https://github.com/Cherry)! - fix: resolves an issue where a malformed path such as `https://example.com/%A0` would cause an unhandled error
+
 ## 0.11.1
 
 ### Patch Changes

@@ -8,7 +8,13 @@ import type { Plugin, PluginBuild } from "esbuild";
 const REQUIRED_NODE_BUILT_IN_NAMESPACE = "node-built-in-modules";
 const REQUIRED_UNENV_ALIAS_NAMESPACE = "required-unenv-alias";
 
-export const nodejsHybridPlugin: () => Plugin = () => {
+/**
+ * ESBuild plugin to apply the unenv preset.
+ *
+ * @param _unenvResolvePaths Root paths used to resolve absolute paths.
+ * @returns ESBuild plugin
+ */
+export function nodejsHybridPlugin(_unenvResolvePaths?: string[]): Plugin {
 	const { alias, inject, external } = env(nodeless, cloudflare);
 	return {
 		name: "hybrid-nodejs_compat",
@@ -19,7 +25,7 @@ export const nodejsHybridPlugin: () => Plugin = () => {
 			handleNodeJSGlobals(build, inject);
 		},
 	};
-};
+}
 
 const NODEJS_MODULES_RE = new RegExp(`^(node:)?(${builtinModules.join("|")})$`);
 
@@ -87,6 +93,13 @@ function handleRequireCallsToNodeJSBuiltins(build: PluginBuild) {
 	);
 }
 
+/**
+ * Handles aliased NPM packages.
+ *
+ * @param build ESBuild PluginBuild.
+ * @param alias Aliases resolved to absolute paths.
+ * @param external external modules.
+ */
 function handleUnenvAliasedPackages(
 	build: PluginBuild,
 	alias: Record<string, string>,
@@ -122,6 +135,7 @@ function handleUnenvAliasedPackages(
 				namespace: REQUIRED_UNENV_ALIAS_NAMESPACE,
 			};
 		}
+
 		// Resolve the alias to its absolute path and potentially mark it as external
 		return {
 			path: aliasAbsolute[args.path],
