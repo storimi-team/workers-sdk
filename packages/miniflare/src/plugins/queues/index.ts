@@ -2,7 +2,6 @@ import fs from "fs/promises";
 import SCRIPT_QUEUE_BROKER_OBJECT from "worker:queues/broker";
 import { z } from "zod";
 import {
-	kVoid,
 	Service,
 	Worker_Binding,
 	Worker_Binding_DurableObjectNamespaceDesignator,
@@ -150,6 +149,22 @@ export const QUEUES_PLUGIN: Plugin<
 			},
 		};
 		services.push(objectService, storageService);
+
+		console.log(
+			"allQueueConsumers",
+			allQueueConsumers.get("scroll-create-media-dev")
+		);
+		console.log("allQueueConsumers", allQueueConsumers);
+
+		// Only start polling if there are any polling consumers
+		if (
+			Object.values(allQueueConsumers).some(
+				(consumer) => consumer?.mode === "polling"
+			)
+		) {
+			console.log("send request for starting polling");
+			await fetch(`http://${SERVICE_QUEUE_PREFIX}/start-polling`);
+		}
 
 		return services;
 	},

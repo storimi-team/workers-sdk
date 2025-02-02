@@ -32,7 +32,6 @@ export const QueueConsumerOptionsSchema = /* @__PURE__ */ z
 		deadLetterQueue: z.ostring(),
 		retryDelay: QueueMessageDelaySchema,
 		mode: z.enum(["on-demand", "polling"]).default("on-demand"),
-		pollingInterval: z.number().optional(),
 	})
 	.transform((queue) => {
 		if (queue.maxRetires !== undefined) {

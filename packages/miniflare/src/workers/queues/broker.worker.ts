@@ -441,32 +441,19 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 
 	@GET("/start-polling")
 	startPolling: RouteHandler = async () => {
+		console.log("this.#consumers", this.#consumers);
 		if (this.#consumers) {
-			for (const [queueName, consumer] of Object.entries(this.#consumers)) {
-				if (consumer?.mode === "polling") {
-					const batchTimeout = Number(
-						consumer.pollingInterval ??
-							consumer.maxBatchTimeout ??
-							DEFAULT_BATCH_TIMEOUT
-					);
-
-					// Set up recurring polls for this consumer
-					setInterval(() => {
-						void this.#flush();
-					}, batchTimeout * 1000);
-
-					await this.logWithLevel(
-						LogLevel.INFO,
-						`Initialized polling consumer for queue "${queueName}" with interval ${batchTimeout}s`
-					);
-				} else {
-					await this.logWithLevel(
-						LogLevel.INFO,
-						`Initialized on-demand consumer for queue "${queueName}"`
-					);
-				}
-			}
+			const batchTimeout = Number(
+				this.#consumers.maxBatchTimeout ?? DEFAULT_BATCH_TIMEOUT
+			);
+			// Set up recurring polls
+			setInterval(() => {
+				void this.#flush();
+			}, batchTimeout * 1000);
+		} else {
+			console.log("No consumer configured, skipping poll setup");
 		}
+
 		return new Response();
 	};
 
