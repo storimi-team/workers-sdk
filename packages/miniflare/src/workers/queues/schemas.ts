@@ -30,8 +30,7 @@ export const QueueConsumerOptionsSchema = /* @__PURE__ */ z
 		maxRetires: z.number().min(0).max(100).optional(), // deprecated
 		maxRetries: z.number().min(0).max(100).optional(),
 		deadLetterQueue: z.ostring(),
-		retryDelay: QueueMessageDelaySchema,
-		mode: z.enum(["on-demand", "polling"]).default("on-demand"),
+		retryDelay: QueueMessageDelaySchema
 	})
 	.transform((queue) => {
 		if (queue.maxRetires !== undefined) {

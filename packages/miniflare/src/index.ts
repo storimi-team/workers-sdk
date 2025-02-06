@@ -50,10 +50,7 @@ import {
 	PluginServicesOptions,
 	ProxyClient,
 	ProxyNodeBinding,
-	QueueConsumers,
-	QueueProducers,
 	QUEUES_PLUGIN_NAME,
-	QueuesError,
 	R2_PLUGIN_NAME,
 	ReplaceWorkersTypes,
 	SERVICE_ENTRY,
@@ -105,7 +102,6 @@ import {
 	CoreHeaders,
 	LogLevel,
 	Mutex,
-	QueueConsumerOptions,
 	SharedHeaders,
 	SiteBindings,
 } from "./workers";
@@ -407,91 +403,6 @@ function getWrappedBindingNames(
 		}
 	}
 	return wrappedBindingWorkerNames;
-}
-
-function getQueueProducers(
-	allWorkerOpts: PluginWorkerOptions[]
-): QueueProducers {
-	const queueProducers: QueueProducers = new Map();
-	for (const workerOpts of allWorkerOpts) {
-		const workerName = workerOpts.core.name ?? "";
-		let workerProducers = workerOpts.queues.queueProducers;
-
-		if (workerProducers !== undefined) {
-			// De-sugar array consumer options to record mapping to empty options
-			if (Array.isArray(workerProducers)) {
-				// queueProducers: ["MY_QUEUE"]
-				workerProducers = Object.fromEntries(
-					workerProducers.map((bindingName) => [
-						bindingName,
-						{ queueName: bindingName },
-					])
-				);
-			}
-
-			type Entries<T> = { [K in keyof T]: [K, T[K]] }[keyof T][];
-			type ProducersIterable = Entries<typeof workerProducers>;
-			const producersIterable = Object.entries(
-				workerProducers
-			) as ProducersIterable;
-
-			for (const [bindingName, opts] of producersIterable) {
-				if (typeof opts === "string") {
-					// queueProducers: { "MY_QUEUE": "my-queue" }
-					queueProducers.set(bindingName, { workerName, queueName: opts });
-				} else {
-					// queueProducers: { QUEUE: { queueName: "QUEUE", ... } }
-					queueProducers.set(bindingName, { workerName, ...opts });
-				}
-			}
-		}
-	}
-	return queueProducers;
-}
-
-function getQueueConsumers(
-	allWorkerOpts: PluginWorkerOptions[]
-): QueueConsumers {
-	const queueConsumers: QueueConsumers = new Map();
-	for (const workerOpts of allWorkerOpts) {
-		const workerName = workerOpts.core.name ?? "";
-		let workerConsumers = workerOpts.queues.queueConsumers;
-		if (workerConsumers !== undefined) {
-			// De-sugar array consumer options to record mapping to empty options
-			if (Array.isArray(workerConsumers)) {
-				workerConsumers = Object.fromEntries(
-					workerConsumers.map((queueName) => [queueName, {} as const])
-				) as Record<string, QueueConsumerOptions>;
-			}
-
-			for (const [queueName, opts] of Object.entries(workerConsumers)) {
-				// Validate that each queue has at most one consumer...
-				const existingConsumer = queueConsumers.get(queueName);
-				if (existingConsumer !== undefined) {
-					throw new QueuesError(
-						"ERR_MULTIPLE_CONSUMERS",
-						`Multiple consumers defined for queue "${queueName}": "${existingConsumer.workerName}" and "${workerName}"`
-					);
-				}
-				// ...then store the consumer
-				queueConsumers.set(queueName, { workerName, ...opts });
-			}
-		}
-	}
-
-	for (const [queueName, consumer] of queueConsumers) {
-		// Check the dead letter queue isn't configured to be the queue itself
-		// (NOTE: Queues *does* permit DLQ cycles between multiple queues,
-		//  i.e. if Q2 is DLQ for Q1, but Q1 is DLQ for Q2)
-		if (consumer.deadLetterQueue === queueName) {
-			throw new QueuesError(
-				"ERR_DEAD_LETTER_QUEUE_CYCLE",
-				`Dead letter queue for queue "${queueName}" cannot be itself`
-			);
-		}
-	}
-
-	return queueConsumers;
 }
 
 // Collects all routes from all worker services
@@ -1087,8 +998,7 @@ export class Miniflare {
 			allWorkerOpts,
 			durableObjectClassNames
 		);
-		const queueProducers = getQueueProducers(allWorkerOpts);
-		const queueConsumers = getQueueConsumers(allWorkerOpts);
+
 		const allWorkerRoutes = getWorkerRoutes(allWorkerOpts, wrappedBindingNames);
 		const workerNames = [...allWorkerRoutes.keys()];
 
@@ -1226,8 +1136,6 @@ export class Miniflare {
 				wrappedBindingNames,
 				durableObjectClassNames,
 				unsafeEphemeralDurableObjects,
-				queueProducers,
-				queueConsumers,
 			};
 			for (const [key, plugin] of PLUGIN_ENTRIES) {
 				const pluginServicesExtensions = await plugin.getServices({

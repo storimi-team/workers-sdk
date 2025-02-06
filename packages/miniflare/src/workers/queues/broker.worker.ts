@@ -214,6 +214,13 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 		const maybeConsumers = env[QueueBindings.MAYBE_JSON_QUEUE_CONSUMERS];
 		if (maybeConsumers === undefined) this.#consumers = {};
 		else this.#consumers = QueueConsumersSchema.parse(maybeConsumers);
+
+		// Start polling for all queues
+		const poll = () => {
+			void this.#flush();
+			this.timers.setTimeout(poll, DEFAULT_BATCH_TIMEOUT * 1000);
+		};
+		poll();
 	}
 
 	get #maybeProducer() {
@@ -253,7 +260,7 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 			if (!storedMessages?.length) return;
 
 			const consumer = this.#maybeConsumer;
-			assert(consumer !== undefined);
+			if (consumer === undefined) return; // Skip if no consumer for this queue
 
 			// Reconstruct QueueMessage instances from stored data
 			const messages = storedMessages.map((msg) => {
@@ -328,9 +335,7 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 									currentMessages
 								);
 							});
-							if (consumer?.mode === "on-demand") {
-								await this.#ensurePendingFlush();
-							}
+							await this.#ensurePendingFlush();
 						}, delay * 1000);
 					} else if (consumer.deadLetterQueue !== undefined) {
 						await this.logWithLevel(
@@ -373,7 +378,7 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 			}
 
 			// Ensure we flush remaining messages
-			if (remainingMessages.length > 0 && consumer?.mode === "on-demand") {
+			if (remainingMessages.length > 0) {
 				await this.#ensurePendingFlush();
 			}
 		});
@@ -418,7 +423,6 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 			const timestamp = new Date(message.timestamp ?? this.timers.now());
 			const body = deserialise(message);
 			const msg = new QueueMessage(id, timestamp, body);
-			const consumer = this.#maybeConsumer;
 
 			const fn = async () => {
 				await this.state.blockConcurrencyWhile(async () => {
@@ -428,9 +432,7 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 						)) ?? [];
 					currentMessages.push(msg);
 					await this.state.storage.put("pending_messages", currentMessages);
-					if (consumer?.mode === "on-demand") {
-						await this.#ensurePendingFlush();
-					}
+					await this.#ensurePendingFlush();
 				});
 			};
 
@@ -438,24 +440,6 @@ export class QueueBrokerObject extends MiniflareDurableObject<QueueBrokerObjectE
 			this.timers.setTimeout(fn, delay * 1000);
 		}
 	}
-
-	@GET("/start-polling")
-	startPolling: RouteHandler = async () => {
-		console.log("this.#consumers", this.#consumers);
-		if (this.#consumers) {
-			const batchTimeout = Number(
-				this.#consumers.maxBatchTimeout ?? DEFAULT_BATCH_TIMEOUT
-			);
-			// Set up recurring polls
-			setInterval(() => {
-				void this.#flush();
-			}, batchTimeout * 1000);
-		} else {
-			console.log("No consumer configured, skipping poll setup");
-		}
-
-		return new Response();
-	};
 
 	@POST("/message")
 	message: RouteHandler = async (req) => {

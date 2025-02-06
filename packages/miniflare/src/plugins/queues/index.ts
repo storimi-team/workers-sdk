@@ -28,6 +28,7 @@ import {
 	QUEUES_STORAGE_SERVICE_NAME,
 	SERVICE_QUEUE_PREFIX,
 } from "./constants";
+import { QueuesError } from "./errors";
 
 export const QueuesOptionsSchema = z.object({
 	queueProducers: z
@@ -46,10 +47,59 @@ export const QueuesSharedOptionsSchema = z.object({
 	queuesPersist: PersistenceSchema,
 });
 
+export const QueueProducerSchema = z.object({
+	workerName: z.string(),
+	queueName: z.string(),
+	batchSize: z.number().int().positive().optional(),
+	maxWaitMs: z.number().int().nonnegative().optional(),
+	maxRetries: z.number().int().nonnegative().optional(),
+	deadLetterQueue: z.string().optional(),
+});
+
+export const QueueConsumerSchema = z.object({
+	workerName: z.string(),
+	batchSize: z.number().int().positive().optional(),
+	maxWaitMs: z.number().int().nonnegative().optional(),
+	maxRetries: z.number().int().nonnegative().optional(),
+	deadLetterQueue: z.string().optional(),
+});
+
+export type QueueProducers = Map<string, z.infer<typeof QueueProducerSchema>>;
+export type QueueConsumers = Map<string, z.infer<typeof QueueConsumerSchema>>;
+
 const QUEUE_BROKER_OBJECT: Worker_Binding_DurableObjectNamespaceDesignator = {
 	serviceName: SERVICE_QUEUE_PREFIX,
 	className: QUEUE_BROKER_OBJECT_CLASS_NAME,
 };
+
+function validateQueueConsumers(
+	options: z.infer<typeof QueuesOptionsSchema>
+): QueueConsumers {
+	const queueConsumers: QueueConsumers = new Map();
+	let workerConsumers = options.queueConsumers;
+
+	if (workerConsumers !== undefined) {
+		if (Array.isArray(workerConsumers)) {
+			workerConsumers = Object.fromEntries(
+				workerConsumers.map((queueName) => [queueName, {} as const])
+			);
+		}
+
+		for (const [queueName, opts] of Object.entries(workerConsumers)) {
+			// Only validate that a queue isn't its own DLQ
+			// (other validations will move to DO)
+			if (opts.deadLetterQueue === queueName) {
+				throw new QueuesError(
+					"ERR_DEAD_LETTER_QUEUE_CYCLE",
+					`Dead letter queue for queue "${queueName}" cannot be itself`
+				);
+			}
+			queueConsumers.set(queueName, opts);
+		}
+	}
+
+	return queueConsumers;
+}
 
 export const QUEUES_PLUGIN: Plugin<
 	typeof QueuesOptionsSchema,
@@ -70,18 +120,14 @@ export const QUEUES_PLUGIN: Plugin<
 			queues.map((name) => [name, new ProxyNodeBinding()])
 		);
 	},
-	async getServices({
-		options,
-		sharedOptions,
-		workerNames,
-		queueProducers: allQueueProducers,
-		queueConsumers: allQueueConsumers,
-		unsafeStickyBlobs,
-		tmpPath,
-	}) {
+
+	async getServices({ options, sharedOptions, unsafeStickyBlobs, tmpPath }) {
 		const persist = sharedOptions.queuesPersist;
 		const queues = bindingEntries(options.queueProducers);
 		if (queues.length === 0) return [];
+
+		// Only validate consumers for DLQ cycles
+		const queueConsumers = validateQueueConsumers(options);
 
 		const services = queues.map<Service>(([_, id]) => ({
 			name: `${SERVICE_QUEUE_PREFIX}:${id}`,
@@ -89,9 +135,7 @@ export const QUEUES_PLUGIN: Plugin<
 		}));
 
 		const uniqueKey = `miniflare-${QUEUE_BROKER_OBJECT_CLASS_NAME}`;
-		const persistPath =
-			process.env.MINIFLARE_QUEUES_PERSIST_DIR ??
-			getPersistPath(QUEUES_PLUGIN_NAME, tmpPath, persist);
+		const persistPath = getPersistPath(QUEUES_PLUGIN_NAME, tmpPath, persist);
 		await fs.mkdir(persistPath, { recursive: true });
 		const storageService: Service = {
 			name: QUEUES_STORAGE_SERVICE_NAME,
@@ -135,36 +179,16 @@ export const QUEUES_PLUGIN: Plugin<
 					},
 					{
 						name: QueueBindings.MAYBE_JSON_QUEUE_PRODUCERS,
-						json: JSON.stringify(Object.fromEntries(allQueueProducers)),
+						json: JSON.stringify(Object.fromEntries(options.queueProducers)),
 					},
 					{
 						name: QueueBindings.MAYBE_JSON_QUEUE_CONSUMERS,
-						json: JSON.stringify(Object.fromEntries(allQueueConsumers)),
+						json: JSON.stringify(Object.fromEntries(queueConsumers)),
 					},
-					...workerNames.map((name) => ({
-						name: QueueBindings.SERVICE_WORKER_PREFIX + name,
-						service: { name: getUserServiceName(name) },
-					})),
 				],
 			},
 		};
 		services.push(objectService, storageService);
-
-		console.log(
-			"allQueueConsumers",
-			allQueueConsumers.get("scroll-create-media-dev")
-		);
-		console.log("allQueueConsumers", allQueueConsumers);
-
-		// Only start polling if there are any polling consumers
-		if (
-			Object.values(allQueueConsumers).some(
-				(consumer) => consumer?.mode === "polling"
-			)
-		) {
-			console.log("send request for starting polling");
-			await fetch(`http://${SERVICE_QUEUE_PREFIX}/start-polling`);
-		}
 
 		return services;
 	},
